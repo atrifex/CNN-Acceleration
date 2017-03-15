@@ -72,12 +72,12 @@ Test your implementation with small batch size first to verify the correctness. 
 Please use the [GitHub issue manager] to report any issues or suggestions about the project.
 
 ## Resources Used
-- [University of Illinois ECE 408 staff][ece408]
+- [University of Illinois: ECE 408 staff][ece408]
 - [Fei Deng][Fei Deng]
 - [Cmake Documentation][cmakedoc]
+- [Hunter][hunter]
 - [Hunter Documentation][hunterdoc]
 - [Rancehpp][rangehpp]
-- [Hunter][hunter]
 
 
 [github issue manager]: https://github.com/Atrifex/Code-Acceleration/issues
