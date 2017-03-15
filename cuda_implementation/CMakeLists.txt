@@ -25,7 +25,7 @@ if (CONFIG_USE_HUNTER)
     )
 endif (CONFIG_USE_HUNTER)
 
-project(ECE408Project)
+project(CUDA_CNN)
 
 
 include(CMakeToolsHelpers OPTIONAL)
@@ -103,7 +103,7 @@ if (NOT "${HDF5_INCLUDE_DIR}" STREQUAL "")
     include_directories("${HDF5_INCLUDE_DIR}")
 endif (NOT "${HDF5_INCLUDE_DIR}" STREQUAL "")
 
-set(PROJECT_TARGET ece408)
+set(PROJECT_TARGET cuda_cnn)
 cuda_add_executable(${PROJECT_TARGET} ${SOURCES})
 target_link_libraries(${PROJECT_TARGET}
     ${HDF5_LIBRARIES}
