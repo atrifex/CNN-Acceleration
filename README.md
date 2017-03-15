@@ -2,11 +2,11 @@
 
 The goal of this project is two fold. First, accelerate the forward propagation step of the Convolutional Neural Network (CNN) algorithm using using CUDA and OpenCL. Second, evaluate its performance on NVIDIA, AMD GPUs, and an FPGA platform.
 
-The dataset and model are from the [MNIST database](http://yann.lecun.com/exdb/mnist/).
-
 ## CNN and MNIST
 
 Provided is a model that has been trained using 60,000 examples (training set images) and the provided test data is 10,000 batched queries (test set images). The expected accuracy of the CNN is `~87%` on the provided test dataset.
+
+The dataset and model are from the [MNIST database](http://yann.lecun.com/exdb/mnist/).
 
 ## Local Development Environment
 
@@ -71,9 +71,16 @@ Test your implementation with small batch size first to verify the correctness. 
 
 Please use the [GitHub issue manager] to report any issues or suggestions about the project.
 
-[github issue manager]: https://github.com/Atrifex/Code-Acceleration/issues
-
 ## Resources Used
+- [University of Illinois ECE 408 staff][ece408]
+- [Fei Deng][Fei Deng]
+- [Cmake Documentation][cmakedoc]
+- [Hunter Documentation][hunterdoc]
+- [Rancehpp][rangehpp]
+- [Hunter][hunter]
+
+
+[github issue manager]: https://github.com/Atrifex/Code-Acceleration/issues
 
 [ece408]: https://github.com/webgpu/ece408project/
 
