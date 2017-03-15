@@ -1,0 +1,51 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+
+# Python Cache
+__pycache__
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Assembly
+*.s
+
+# Executables
+*.exe
+*.out
+*.app
+
+build/
+.idea
+*~
+.conan
+bld
+.vscode
+
+.settings
+.cproject
+.project
+
+Debug
+
+build-*/
+*.log
+README.pdf
