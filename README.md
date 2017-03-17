@@ -16,7 +16,7 @@ Aside from a C compiler and the CUDA 8 Toolkit, [CMake](https://cmake.org/) 3.1 
 
 ### How to Build
 
-There are two options to build this project, the first is using the [Hunter] package manager and the other is using [Docker](https://www.docker.com/). We sugguest using CMake along with Hunter, but it is known not to work on all operating systems. In this case, we suggest that you either using Docker or install the libraries needed (mainly `HDF5`).
+To build the project the [Hunter] package manager with Cmake needs to be used. Install the libraries needed (mainly `HDF5`).
 
 #### Using Hunter Package Manager
 
@@ -40,23 +40,6 @@ make
 If you do not plan on using `make`, examine the `cmake -G` option which allows you to generate XCode, Visual Studio, ... project configurations. You may also need to change the build type to enable/disable debugging and/or optimizations.
 
 If you need to use another library, you need have to modify the [`CMakeLists.txt`] and add the libraries to the `target_link_libraries` (and possibly the `include_directories`) section. Documentation on the CMake commands is found in the [documentation page][cmakedoc].
-
-#### Using Docker Container
-
-[![Docker Automated build](https://img.shields.io/docker/automated/jrottenberg/ffmpeg.svg)](https://hub.docker.com/r/webgpu/ece408project/)
-
-Also included is a [Docker](http://docker.io/) build file. This file is a specification for a Docker container image. It can be used to build and launch a container (think of a virtual machine) which contains this project along with all the software required to run it. Using a GPU within Docker is only supported on Linux(you can compile and run the serial code on any operating system), and we recommend using [NVIDIA-Docker](https://github.com/NVIDIA/nvidia-docker) to run the Docker image. To build the Docker container, do
-
-```{.sh}
-cd $SRCDIR
-docker build . -t ece408project
-```
-
-Once built, the `ece408project` image would be listed by the `docker images` command. This will compile your project. You can launch the docker image using
-
-```{.sh}
-docker run -it ece408project
-```
 
 ## How to Run Code
 
