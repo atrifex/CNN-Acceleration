@@ -49,3 +49,5 @@ Debug
 build-*/
 *.log
 README.pdf
+
+*.swp

@@ -27,7 +27,6 @@ endif (CONFIG_USE_HUNTER)
 
 project(OpenCL_CNN)
 
-
 include(CMakeToolsHelpers OPTIONAL)
 
 if (UNIX AND NOT APPLE)
@@ -64,14 +63,6 @@ find_package( OpenCL REQUIRED )
 include("${SRC_DIR}/config.cmake")
 
 ### Setup target ###
-
-
-# It may be necessary to specify the compute capability of your
-# NVIDIA GPU. In that case, simply uncomment the following two lines that start
-# with 'set' and change the value of COMPUTE_CAPABILITY to one of the following
-# hardware architectures: Tesla-class '11', '12', or '13'; Fermi-class '20'
-# or '21'; Kepler-class '30', '32', '35'; or Maxwell-class '50' or '52'
-
 # Set warning levels for host compilation
 if (UNIX)
     add_compile_options(-Wextra)
