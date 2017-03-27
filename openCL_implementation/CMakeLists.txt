@@ -77,6 +77,7 @@ endif (UNIX)
 include_directories(
     "${ZLIB_INCLUDE_DIRS}"
     "${SRC_DIR}"
+    "${OPENCL_INCLUDE_DIRS}"
 )
 
 if (NOT "${HDF5_INCLUDE_DIR}" STREQUAL "")
@@ -90,6 +91,6 @@ add_executable(${PROJECT_TARGET} ${SOURCES})
 target_link_libraries(${PROJECT_TARGET}
     ${HDF5_LIBRARIES}
     ${ZLIB_LIBRARIES}
+    ${OPENCL_LIBRARY}
 )
 
-# Add a special target to clean nvcc generated files.
