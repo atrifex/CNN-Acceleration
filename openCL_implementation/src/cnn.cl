@@ -14,28 +14,6 @@
  * limitations under the License.
  */
 
-
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
-#include <device_functions.h>
-
-#include <stdio.h>
-#include <algorithm>
-#include <cassert>
-#include <cstddef>
-#include <iostream>
-#include <numeric>
-#include <map>
-#include <time.h>
-#include <valarray>
-#include <string>
-#include <hdf5.h>
-#include <math.h>
-
-#include "range.hpp"
-#include "utils.hpp"
-
-
 #define HALF_TILE_SIZE              16
 #define TILE_SIZE                   32
 #define DOUBLE_TILE_SIZE            64

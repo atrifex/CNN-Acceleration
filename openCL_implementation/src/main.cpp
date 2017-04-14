@@ -1,87 +1,5 @@
-#include <algorithm>
-#include <cassert>
-#include <cstddef>
-#include <iostream>
-#include <numeric>
-#include <map>
-#include <sys/time.h>
-#include <valarray>
 
-#include <hdf5.h>
-
-#ifdef __APPLE__
-    #include <OpenCL/cl.h>
-#else
-    #include <CL/cl.h>
-#endif
-
-#include "range.hpp"
-#include "utils.hpp"
-
-#define HALF_TILE_SIZE              16
-#define TILE_SIZE                   32
-#define DOUBLE_TILE_SIZE            64
-#define BLOCK_SIZE                  512
-#define POOL_SIZE                   2
-#define AVG_COUNT                   (POOL_SIZE * POOL_SIZE)
-
-#define NUM_DIGITS                  10
-#define NUM_STREAMS                 16
-#define STREAM_IDX_CONV1            (NUM_STREAMS - 1)
-#define STREAM_IDX_CONV2            (NUM_STREAMS - 2)
-#define STREAM_IDX_FC1              (NUM_STREAMS - 3)
-#define STREAM_IDX_FC2              (NUM_STREAMS - 4)
-#define MAX_THREADS_PER_BLOCK       1024
-
-#define CONV_ROWS                   5
-#define CONV_COLS                   5
-#define CONV_NUM_ELEMENTS           (CONV_ROWS * CONV_COLS)
-#define CONV1_INPUT_CHANNELS        1
-#define CONV1_OUTPUT_CHANNELS       32
-#define CONV1_NUM_ELEMENTS_IN       (CONV1_INPUT_CHANNELS * CONV_NUM_ELEMENTS)
-#define CONV2_INPUT_CHANNELS        32
-#define CONV2_OUTPUT_CHANNELS       64
-#define CONV2_NUM_ELEMENTS_IN       (CONV2_INPUT_CHANNELS * CONV_NUM_ELEMENTS)
-
-#define FC1_ROWS                    1024
-#define FC1_COLS                    128
-#define FC2_ROWS                    FC1_COLS
-#define FC2_COLS                    NUM_DIGITS
-
-#define INPUT_ROWS                  28
-#define INPUT_COLS                  28
-#define INPUT_CHANNELS              1
-#define INPUT_NUM_ELEMENTS          (INPUT_ROWS * INPUT_COLS)
-
-#define A_ROWS                      (INPUT_ROWS - CONV_ROWS + 1)
-#define A_COLS                      (INPUT_COLS - CONV_COLS + 1)
-#define A_NUM_ELEMENTS              (A_ROWS * A_COLS)
-#define B_ROWS                      (A_ROWS / 2)
-#define B_COLS                      (A_COLS / 2)
-#define B_NUM_ELEMENTS              (B_ROWS * B_COLS)
-#define C_ROWS                      (B_ROWS - CONV_ROWS + 1)
-#define C_COLS                      (B_COLS - CONV_COLS + 1)
-#define C_NUM_ELEMENTS              (C_ROWS * C_COLS)
-#define D_ROWS                      (C_ROWS / 2)
-#define D_COLS                      (C_COLS / 2)
-#define D_NUM_ELEMENTS              (D_ROWS * D_COLS)
-
-#define AVG1_A_NUM_ELEMENTS_OUT     (CONV1_OUTPUT_CHANNELS * A_NUM_ELEMENTS)
-#define AVG1_B_NUM_ELEMENTS_OUT     (CONV1_OUTPUT_CHANNELS * B_NUM_ELEMENTS)
-#define AVG2_C_NUM_ELEMENTS_OUT     (CONV2_OUTPUT_CHANNELS * C_NUM_ELEMENTS)
-#define AVG2_D_NUM_ELEMENTS_OUT     (CONV2_OUTPUT_CHANNELS * D_NUM_ELEMENTS)
-
-#define BATCH_NUM_PER_STREAM        1000
-#define BATCH_NUM_FACTOR            32
-#define CONSTANT_MEM_SIZE           (64 * 1024)
-
-#define MATRIX_MUL1_BLOCKS_PER_NUM  6
-#define MATRIX_MUL1_COLS_PER_BLOCK  (A_NUM_ELEMENTS / MATRIX_MUL1_BLOCKS_PER_NUM)
-#define MATRIX_MUL1_SKIP1           (CONV_NUM_ELEMENTS * A_NUM_ELEMENTS)
-#define MATRIX_MUL1_SKIP2           (CONV1_OUTPUT_CHANNELS * A_NUM_ELEMENTS)
-#define MATRIX_MUL2_NUMS_PER_BLOCK  2
-#define UNROLL2_LAYERS              (BLOCK_SIZE / C_NUM_ELEMENTS)
-#define FULLY_FORWARD1_TILE_NUM     (FC1_ROWS / TILE_SIZE)
+#include "cnn.h"
 
 static unsigned int FLAGS_batch_size = 10000;
 static std::string FLAGS_testdata{};
@@ -151,12 +69,23 @@ float *d_device;
 float *e_device;
 float *f_device;
 
-unsigned int *output_device;
+unsigned int * output_device;
 
-// CUDA streams
-// TODO: Need to change to OpenCL equivalent
-cudaStream_t streams[NUM_STREAMS];
+cl_platform_id platform;                        // OpenCL platform
+cl_device_id device_id;                         // device ID
+cl_context context;                             // context
+cl_command_queue queues[NUM_CMD_QUEUES];
+cl_program program;                             // program
+cl_kernel kernel;                               // kernel
 
+// Function to check and handle OpenCL errors
+inline void checkErr(cl_int err, const char * name)
+{
+    if (err != CL_SUCCESS) {
+        std::cerr << "ERROR: " <<  name << " (" << err << ")" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
 
 /*
     load_data(float *x, float *y)
@@ -271,7 +200,7 @@ static void get_ground_truth(const float *input, unsigned int *output) {
     }
 }
 
-/*
+/*  TODO
     forward_operation(const float *input, const float *conv1, const float *conv2, const float * fc1, const float *fc2, unsigned int *output)
     DESCRIPTION:
         Forward operation for the CNN, a combination of conv layer + average pooling + relu.
@@ -311,7 +240,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         const unsigned int offset = start * INPUT_NUM_ELEMENTS;
         cudaMemcpyAsync(input_device + offset, input + offset, grid_size * INPUT_NUM_ELEMENTS * sizeof(float), cudaMemcpyHostToDevice, streams[s]);
         unroll1<<<grid_size, BLOCK_SIZE, 0, streams[s]>>>(input_device, input_unroll_device, start);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // matrix multiplication kernel 1, you know, multiply two matrices
@@ -321,7 +250,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
         dim3 grid_dim_matrix_mul1(MATRIX_MUL1_BLOCKS_PER_NUM, min(batch_num, input_unroll_dims[0] - start), 1);
         matrix_multiplication1<<<grid_dim_matrix_mul1, block_dim_mm, 0, streams[s]>>>(conv1_device, input_unroll_device, a_device, start);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // average pool kernel 1, err, like the name suggests, it averages stuff...
@@ -332,7 +261,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         const unsigned int todo_count = min(batch_num, a_dims[0] - start);
         const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
         average_pool1<<<grid_size, block_dim_avg1, 0, streams[s]>>>(a_device, b_device, start, start + todo_count);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // unroll kernel 2, now we have 32 channels per number, so multiply the batch number by 32
@@ -344,7 +273,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     dim3 block_dim_unroll2(b_unroll_dims[3], layers, 1);
     for (unsigned int start = 0; start < total_channels; start += batch_num) {
         unroll2<<<min(static_cast<unsigned int>(ceil(batch_num / (float)layers)), static_cast<unsigned int>(ceil(total_channels - start) / (float)layers)), block_dim_unroll2, 0, streams[s]>>>(b_device, b_unroll_device, start);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // matrix multiplication kernel 2, again multiply two matrices
@@ -353,7 +282,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     cudaStreamSynchronize(streams[STREAM_IDX_CONV2]);
     for (unsigned int start = 0; start < b_unroll_dims[0]; start += batch_num) {
         matrix_multiplication2<<<min(static_cast<unsigned int>(ceil(batch_num / 2.0f)), static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f))), block_dim_mm, 0, streams[s]>>>(conv2_device, b_unroll_device, c_device, start);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // average pool kernel 2, really, you need to read this to understand average?
@@ -364,7 +293,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         const unsigned int todo_count = min(batch_num, c_dims[0] - start);
         const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
         average_pool2<<<grid_size, block_dim_avg2, 0, streams[s]>>>(c_device, d_device, start, start + todo_count);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
@@ -373,7 +302,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     for (unsigned int start = 0; start < d_dims2[0]; start += batch_num) {
         const unsigned int a_height = min(batch_num, d_dims2[0] - start);
         fully_forward1<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_mm, 0, streams[s]>>>(d_device, fc1_device, e_device, a_height, start);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // fully forward kernel 2, ok, so this is a different one, jk it's not
@@ -384,7 +313,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     for (unsigned int start = 0; start < e_dims[0]; start += batch_num) {
         const unsigned int a_height = min(batch_num, e_dims[0] - start);
         fully_forward2<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_ff, 0, streams[s]>>>(e_device, fc2_device, f_device, a_height, start);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // arg max kernel, search for the largest number...'s index in the array of arrays, the index is the index of the sub array (between 0 - 9)
@@ -393,7 +322,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         const unsigned int todo_count = min(batch_num, f_dims[0] - start);
         arg_max<<<static_cast<unsigned int>(ceil(todo_count / (float)BLOCK_SIZE)), BLOCK_SIZE, 0, streams[s]>>>(f_device, output_device, f_len, start);
         cudaMemcpyAsync(output + start, output_device + start, todo_count * sizeof(int), cudaMemcpyDeviceToHost, streams[s]);
-        s = (s + 1) % NUM_STREAMS;
+        s = (s + 1) % NUM_CMD_QUEUES;
     }
 
     // if sync is outside of this function, then boom!
@@ -401,10 +330,11 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 }
 
 
-/*
+/*  TODO
     main(unsigned int argc, char **argv)
     DESCRIPTION:
-        The main function... lol
+        The main function
+
     INPUT:
         argc - number of args
         argv - pointer to args
@@ -416,6 +346,25 @@ int main(unsigned int argc, char **argv) {
             << argv[0] << " test10.hdf5 model.hdf5 10\n";
         return -1;
     }
+
+    std::ifstream srcFile("cnn.cl");
+    checkErr(srcFile.is_open() ? CL_SUCCESS : -1, "reading simple.cl");
+
+    // Setup CL context
+    clGetPlatformIDs(1, &platform, NULL));
+    checkErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL));
+
+
+    // Create an OpenCL context on first available platform
+    context = CreateContext();
+
+    // init all the queues
+    for (unsigned int i = 0; i < NUM_CMD_QUEUES; i++) {
+        queues[i] = clCreateCommandQueue(//TODO);
+    }
+
+#pragma mark - Global Variable setup
+{
 
     FLAGS_testdata = std::string(argv[1]);
     FLAGS_model = std::string(argv[2]);
@@ -449,11 +398,7 @@ int main(unsigned int argc, char **argv) {
     e_len = flattened_length(e_dims);
     f_len = flattened_length(f_dims);
     output_len = input_dims[0];
-
-    // init all the streams
-    for (unsigned int i = 0; i < NUM_STREAMS; i++) {
-        cudaStreamCreate(&streams[i]);
-    }
+}
 
     // malloc everything...
     cudaMalloc((void **)&all_memory_device, ((conv1_len << 1) + (conv2_len << 1) + (fc1_len << 1) + fc2_len + input_len + input_unroll_len + a_len + b_len + b_unroll_len + c_len + d_len + e_len + f_len) * sizeof(float) + output_len * sizeof(int));

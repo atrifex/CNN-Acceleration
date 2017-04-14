@@ -11,4 +11,4 @@ set(
   ${CMAKE_CURRENT_LIST_DIR}/range.hpp
 )
 
-configure_file(${CMAKE_CURRENT_LIST_DIR}/main.cl ${CMAKE_CURRENT_BINARY_DIR}/main.cl COPYONLY)
+configure_file(${CMAKE_CURRENT_LIST_DIR}/cnn.cl ${CMAKE_CURRENT_BINARY_DIR}/cnn.cl COPYONLY)
