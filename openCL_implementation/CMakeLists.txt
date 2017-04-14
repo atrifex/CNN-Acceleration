@@ -91,6 +91,5 @@ add_executable(${PROJECT_TARGET} ${SOURCES})
 target_link_libraries(${PROJECT_TARGET}
     ${HDF5_LIBRARIES}
     ${ZLIB_LIBRARIES}
-    ${OPENCL_LIBRARY}
+    ${OPENCL_LIBRARIES}
 )
-

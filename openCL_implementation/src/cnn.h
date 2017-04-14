@@ -92,4 +92,4 @@ using std::vector;
 #define UNROLL2_LAYERS              (BLOCK_SIZE / C_NUM_ELEMENTS)
 #define FULLY_FORWARD1_TILE_NUM     (FC1_ROWS / TILE_SIZE)
 
-#endif __CNN_H__
+#endif
