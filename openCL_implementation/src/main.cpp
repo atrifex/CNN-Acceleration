@@ -448,19 +448,19 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
     // unroll kernel 1, this will unroll from input dataset, also use async memcpy to make it more efficient
     for (unsigned int start = 0; start < input_dims[0]; start += batch_num) {
-        const unsigned int wg_size = min(batch_num, input_dims[0] - start);
+        const unsigned int wgGlobSize = min(batch_num, input_dims[0] - start);
         const unsigned int offset = start * INPUT_NUM_ELEMENTS;
 
         // copy over batch of memory to be worked on
-        checkErr(clEnqueueWriteBuffer(queues[q], input_device, CL_FALSE, offset, wg_size * INPUT_NUM_ELEMENTS * sizeof(float),
+        checkErr(clEnqueueWriteBuffer(queues[q], input_device, CL_FALSE, offset, wgGlobSize * INPUT_NUM_ELEMENTS * sizeof(float),
                     (void*)(input + offset), 0, NULL, NULL));
 
         // setting arguments and calling unroll1 kernel
         size_t lws_unroll1[] = {BLOCK_SIZE};
-        size_t gws_unroll1[] = {wg_size*BLOCK_SIZE};
+        size_t gws_unroll1[] = {wgGlobSize*lws_unroll1[0]};
         checkErr(clSetKernelArg(kernels["unroll1"], 0, sizeof(cl_mem), &input_device));
         checkErr(clSetKernelArg(kernels["unroll1"], 1, sizeof(cl_mem), &input_unroll_device));
-        checkErr(clSetKernelArg(kernels["unroll1"], 2, sizeof(cl_mem), &start));
+        checkErr(clSetKernelArg(kernels["unroll1"], 2, sizeof(cl_uint), &start));
         checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll1"], 1, NULL, gws_unroll1, lws_unroll1, 0, NULL, NULL));
 
         // increment queue index
@@ -472,41 +472,60 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     size_t lws_mm1[] = {HALF_TILE_SIZE, HALF_TILE_SIZE, 1};
     clFinish(queues[QUEUE_IDX_CONV1]);
     for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
-        size_t gws_mm1[] = {MATRIX_MUL1_BLOCKS_PER_NUM*HALF_TILE_SIZE, min(batch_num, input_unroll_dims[0] - start)*HALF_TILE_SIZE, 1};
+        size_t gws_mm1[] = {MATRIX_MUL1_BLOCKS_PER_NUM*lws_mm1[0], min(batch_num, input_unroll_dims[0] - start)*lws_mm1[1], 1*lws_mm1[2]};
 
         // setting arguments and calling matrix_multiplication1 kernel
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 0, sizeof(cl_mem), &conv1_device));
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 1, sizeof(cl_mem), &input_unroll_device));
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 2, sizeof(cl_mem), &a_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 3, sizeof(cl_mem), &start));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 3, sizeof(cl_uint), &start));
         checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication1"], 2, NULL, gws_mm1, lws_mm1, 0, NULL, NULL));
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
 
-    // // average pool kernel 1, err, like the name suggests, it averages stuff...
-    // s = 0;
-    // unsigned int layers = MAX_THREADS_PER_BLOCK / B_NUM_ELEMENTS;
-    // dim3 block_dim_avg1(b_dims[2], b_dims[3], layers);
-    // for (unsigned int start = 0; start < a_dims[0]; start += batch_num) {
-    //     const unsigned int todo_count = min(batch_num, a_dims[0] - start);
-    //     const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
-    //     average_pool1<<<grid_size, block_dim_avg1, 0, streams[s]>>>(a_device, b_device, start, start + todo_count);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
-    //
-    // // unroll kernel 2, now we have 32 channels per number, so multiply the batch number by 32
-    // // and we don't need to copy data from anywhere
-    // s = 0;
-    // batch_num = batch_num * BATCH_NUM_FACTOR;
-    // layers = UNROLL2_LAYERS;
-    // const unsigned int total_channels = b_dims[0] * b_dims[1];
-    // dim3 block_dim_unroll2(b_unroll_dims[3], layers, 1);
-    // for (unsigned int start = 0; start < total_channels; start += batch_num) {
-    //     unroll2<<<min(static_cast<unsigned int>(ceil(batch_num / (float)layers)), static_cast<unsigned int>(ceil(total_channels - start) / (float)layers)), block_dim_unroll2, 0, streams[s]>>>(b_device, b_unroll_device, start);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
-    //
+    // average pool kernel 1, err, like the name suggests, it averages stuff...
+    q = 0;
+    unsigned int layers = MAX_THREADS_PER_BLOCK / B_NUM_ELEMENTS;
+    size_t lws_avg1[] = {b_dims[2], b_dims[3], layers};
+    for (unsigned int start = 0; start < a_dims[0]; start += batch_num) {
+        const unsigned int todo_count = min(batch_num, a_dims[0] - start);
+        const unsigned int wgGlobSize = static_cast<unsigned int>(ceil(todo_count / (float)layers));
+        const unsigned int offsetFromStart = start + todo_count;
+
+        size_t gws_avg1[] = {wgGlobSize*lws_avg1[0], 1*lws_avg1[1], 1*lws_avg1[2]};
+
+        // setting arguments and calling average_pool1 kernel
+        checkErr(clSetKernelArg(kernels["average_pool1"], 0, sizeof(cl_mem), &a_device));
+        checkErr(clSetKernelArg(kernels["average_pool1"], 1, sizeof(cl_mem), &b_device));
+        checkErr(clSetKernelArg(kernels["average_pool1"], 2, sizeof(cl_uint), &start));
+        checkErr(clSetKernelArg(kernels["average_pool1"], 3, sizeof(cl_uint), &offsetFromStart));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["average_pool1"], 3, NULL, gws_avg1, lws_avg1, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
+
+    // unroll kernel 2, now we have 32 channels per number, so multiply the batch number by 32
+    // and we don't need to copy data from anywhere
+    q = 0;
+    batch_num = batch_num * BATCH_NUM_FACTOR;
+    layers = UNROLL2_LAYERS;
+    const unsigned int total_channels = b_dims[0] * b_dims[1];
+    size_t lws_unroll2[] = {b_unroll_dims[3], layers, 1};
+    for (unsigned int start = 0; start < total_channels; start += batch_num) {
+        size_t gws_unroll2[] = {(min(static_cast<unsigned int>(ceil(batch_num / (float)layers)),
+                static_cast<unsigned int>(ceil(total_channels - start) / (float)layers))*lws_unroll2[0]),
+                1*lws_unroll2[1], 1*lws_unroll2[2]};
+
+        // setting arguments and calling unroll2 kernel
+        checkErr(clSetKernelArg(kernels["unroll2"], 0, sizeof(cl_mem), &b_device));
+        checkErr(clSetKernelArg(kernels["unroll2"], 1, sizeof(cl_mem), &b_unroll_device));
+        checkErr(clSetKernelArg(kernels["unroll2"], 2, sizeof(cl_uint), &start));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll2"], 3, NULL, gws_unroll2, lws_unroll2, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
+    // 
     // // matrix multiplication kernel 2, again multiply two matrices
     // s = 0;
     // batch_num = batch_num / BATCH_NUM_FACTOR;
@@ -515,7 +534,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     //     matrix_multiplication2<<<min(static_cast<unsigned int>(ceil(batch_num / 2.0f)), static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f))), block_dim_mm, 0, streams[s]>>>(conv2_device, b_unroll_device, c_device, start);
     //     s = (s + 1) % NUM_CMD_QUEUES;
     // }
-    //
+
     // // average pool kernel 2, really, you need to read this to understand average?
     // s = 0;
     // layers = BLOCK_SIZE / D_NUM_ELEMENTS;
