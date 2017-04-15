@@ -9,11 +9,16 @@
 #include <cassert>
 #include <cstddef>
 #include <numeric>
-#include <map>
 #include <sys/time.h>
 #include <valarray>
 #include <vector>
 
+#include <map>
+#include <iostream>
+#include <string>
+
+using std::string;
+using std::map;
 using std::vector;
 
 #include <hdf5.h>

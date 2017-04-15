@@ -48,38 +48,37 @@ static unsigned int f_len;
 static unsigned int output_len;
 
 // pointers to the device memory used in the forward operation
-float *all_memory_device;
-float *conv1_device_;
-float *conv2_device_;
-float *fc1_device_;
+cl_mem all_memory_device;
+cl_mem conv1_device_;
+cl_mem conv2_device_;
+cl_mem fc1_device_;
 
-float *conv1_device;
-float *conv2_device;
-float *fc1_device;
-float *fc2_device;
+cl_mem conv1_device;
+cl_mem conv2_device;
+cl_mem fc1_device;
+cl_mem fc2_device;
 
-float *input_device;
-float *input_unroll_device;
+cl_mem input_device;
+cl_mem input_unroll_device;
 
-float *a_device;
-float *b_device;
-float *b_unroll_device;
-float *c_device;
-float *d_device;
-float *e_device;
-float *f_device;
+cl_mem a_device;
+cl_mem b_device;
+cl_mem b_unroll_device;
+cl_mem c_device;
+cl_mem d_device;
+cl_mem e_device;
+cl_mem f_device;
 
-unsigned int * output_device;
+cl_mem output_device;
 
 cl_platform_id platform;                        // OpenCL platform
-cl_device_id device_id;                         // device ID
+cl_device_id device;                         // device ID
 cl_context context;                             // context
-cl_command_queue queues[NUM_CMD_QUEUES];
+cl_command_queue queues[NUM_CMD_QUEUES];        // command queue
 cl_program program;                             // program
-cl_kernel kernel;                               // kernel
+map<string, cl_kernel> kernels;                 // kernels
 
-const char *getErrorString(cl_int error)
-{
+const char *getErrorString(cl_int error){
     switch(error){
         // run-time and JIT compiler errors
         case 0: return "CL_SUCCESS";
@@ -155,13 +154,116 @@ const char *getErrorString(cl_int error)
     }
 }
 
-// Function to check and handle OpenCL errors
-inline void checkErr(cl_int error)
-{
+inline void checkErr(cl_int error){
     if (error != CL_SUCCESS) {
         std::cerr << "ERROR: " <<  getErrorString(error)  << std::endl;
         exit(EXIT_FAILURE);
     }
+}
+
+void cleanUp(){
+    for(int i = 0; i < NUM_CMD_QUEUES; i++){
+        if (queues[i] != 0)
+            clReleaseCommandQueue(queues[i]);
+    }
+
+    for (const auto & kernel : kernels) {
+        if (kernel.second != 0)
+            clReleaseKernel(kernel.second);
+    }
+
+    if (program != 0)
+        clReleaseProgram(program);
+
+    if (context != 0)
+        clReleaseContext(context);
+}
+
+cl_program createProgram(cl_context context, cl_device_id device, const char* fileName){
+    cl_int errNum;
+    cl_program program;
+
+    std::ifstream kernelFile(fileName, std::ios::in);
+    if (!kernelFile.is_open()){
+        std::cerr << "Failed to open file for reading: " << fileName << std::endl;
+        return NULL;
+    }
+
+    std::ostringstream oss;
+    oss << kernelFile.rdbuf();
+
+    std::string srcStdStr = oss.str();
+    const char *srcStr = srcStdStr.c_str();
+    program = clCreateProgramWithSource(context, 1, (const char**)&srcStr, NULL, &errNum);
+    if (program == NULL) {
+        checkErr(errNum);
+        std::cerr << "Failed to create CL program from source." << std::endl;
+        return NULL;
+    }
+
+    errNum = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    if (errNum != CL_SUCCESS)
+    {
+        // Determine the reason for the error
+        char buildLog[16384];
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG,
+                              sizeof(buildLog), buildLog, NULL);
+
+        std::cerr << "Error in kernel: " << std::endl;
+        std::cerr << buildLog;
+        clReleaseProgram(program);
+        return NULL;
+    }
+
+    return program;
+}
+
+void createKernel(string kernel_name){
+    // error code returned from api calls
+    cl_int err;
+
+    // create kernel and check for errors
+    kernels[kernel_name] = clCreateKernel(program, kernel_name.c_str(), &err);
+    checkErr(err);
+}
+
+void initializeOpenCLParameters(){
+    // error code returned from api calls
+    cl_int err;
+
+    // Get platform and then a GPU on that platform
+    checkErr(clGetPlatformIDs(1, &platform, NULL));
+    checkErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL));
+
+    // create context
+    context = clCreateContext(0, 1, &device, NULL, NULL, &err);
+    checkErr(err);
+
+    // Create all of the command queues
+    for (unsigned int i = 0; i < NUM_CMD_QUEUES; i++) {
+        queues[i] = clCreateCommandQueue(context, device, 0, &err);
+        checkErr(err);
+    }
+
+    // Load source code for program
+    if ((program = createProgram(context, device, "cnn.cl")) == NULL) {
+        cleanUp();
+        std::cerr << "Program creation failed." << std::endl;
+        exit(1);
+    }
+
+    createKernel("transform_conv1");
+    createKernel("transform_conv2");
+    createKernel("transform_fc1");
+    createKernel("unroll1");
+    createKernel("unroll2");
+    createKernel("matrix_multiplication1");
+    createKernel("matrix_multiplication2");
+    createKernel("average_pool1");
+    createKernel("average_pool2");
+    createKernel("fully_forward1");
+    createKernel("fully_forward2");
+    createKernel("arg_max");
 }
 
 // /*
@@ -417,29 +519,14 @@ inline void checkErr(cl_int error)
         argv - pointer to args
 */
 int main(int argc, char **argv) {
-    int err;                            // error code returned from api calls
 
     if (argc != 4) {
-        std::cerr << "\nThis program performs the forward opertion step for Convolutional Neural Network(CNN). Sample usage: \n"
+        std::cerr << "This program performs the forward opertion step for Convolutional Neural Network(CNN). Sample usage: \n"
             << argv[0] << " test10.hdf5 model.hdf5 10\n";
         return -1;
     }
 
-    std::ifstream srcFile("cnn.cl");
-    checkErr(srcFile.is_open() ? CL_SUCCESS : -1);
-
-    // Setup CL context
-    checkErr(clGetPlatformIDs(1, &platform, NULL));
-    checkErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL));
-
-
-
-    // Create an OpenCL context on first available platform
-
-    // // init all the queues
-    // for (unsigned int i = 0; i < NUM_CMD_QUEUES; i++) {
-    //     queues[i] = clCreateCommandQueue(//TODO);
-    // }
+    initializeOpenCLParameters();
 
 #pragma mark - Global Variable setup
 {
@@ -479,69 +566,70 @@ int main(int argc, char **argv) {
 }
 
     // malloc everything...
-    // cudaMalloc((void **)&all_memory_device, ((conv1_len << 1) + (conv2_len << 1) + (fc1_len << 1) + fc2_len + input_len + input_unroll_len + a_len + b_len + b_unroll_len + c_len + d_len + e_len + f_len) * sizeof(float) + output_len * sizeof(int));
-    // conv1_device_ = &all_memory_device[0];
-    // conv2_device_ = &conv1_device_[conv1_len];
-    // fc1_device_ = &conv2_device_[conv2_len];
-    // conv1_device = &fc1_device_[fc1_len];
-    // conv2_device = &conv1_device[conv1_len];
-    // fc1_device = &conv2_device[conv2_len];
-    // fc2_device = &fc1_device[fc1_len];
-    // input_device = &fc2_device[fc2_len];
-    // input_unroll_device = &input_device[input_len];
-    // a_device = &input_unroll_device[input_unroll_len];
-    // b_device = &a_device[a_len];
-    // b_unroll_device = &b_device[b_len];
-    // c_device = &b_unroll_device[b_unroll_len];
-    // d_device = &c_device[c_len];
-    // e_device = &d_device[d_len];
-    // f_device = &e_device[e_len];
-    // output_device = (unsigned int *)&f_device[f_len];
-    //
-    // float *all_memory_host, *input, *conv1, *conv2, *fc1, *fc2;
-    // unsigned int *output;
-    //
-    // // malloc space for everything in host
-    // cudaMallocHost((void **)&all_memory_host, (input_len + conv1_len + conv2_len + fc1_len + fc2_len) * sizeof(float) + output_len * sizeof(int));
-    // input = &all_memory_host[0];
-    // conv1 = &input[input_len];
-    // conv2 = &conv1[conv1_len];
-    // fc1 = &conv2[conv2_len];
-    // fc2 = &fc1[fc1_len];
-    // output = (unsigned int *)&fc2[fc2_len];
-    // float *ref = allocate<float>(ref_dims);
-    //
-    // // Load data into input and ref
-    // load_data(input, ref);
-    //
-    // // Load model
-    // load_model(conv1, conv2, fc1, fc2);
-    //
-    // // do its thing
-    // const auto start = now();
-    // forward_operation(input, conv1, conv2, fc1, fc2, output);
-    // const auto end = now();
-    //
-    // // get elapsed time in milliseconds
-    // const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-    //
-    // // Get reference
-    // unsigned int *ground_truth = allocate<unsigned int>(FLAGS_batch_size);
-    // get_ground_truth(ref, ground_truth);
-    //
-    // // Calculate correctness
-    // unsigned int num_correct = 0;
-    // for (unsigned int i = 0; i < FLAGS_batch_size; i++) {
-    //     if (output[i] == ground_truth[i]) {
-    //         num_correct++;
-    //     }
-    // }
+    cudaMalloc((void **)&all_memory_device, ((conv1_len << 1) + (conv2_len << 1) + (fc1_len << 1) + fc2_len + input_len + input_unroll_len + a_len + b_len + b_unroll_len + c_len + d_len + e_len + f_len) * sizeof(float) + output_len * sizeof(int));
+    conv1_device_ = &all_memory_device[0];
+    conv2_device_ = &conv1_device_[conv1_len];
+    fc1_device_ = &conv2_device_[conv2_len];
+    conv1_device = &fc1_device_[fc1_len];
+    conv2_device = &conv1_device[conv1_len];
+    fc1_device = &conv2_device[conv2_len];
+    fc2_device = &fc1_device[fc1_len];
+    input_device = &fc2_device[fc2_len];
+    input_unroll_device = &input_device[input_len];
+    a_device = &input_unroll_device[input_unroll_len];
+    b_device = &a_device[a_len];
+    b_unroll_device = &b_device[b_len];
+    c_device = &b_unroll_device[b_unroll_len];
+    d_device = &c_device[c_len];
+    e_device = &d_device[d_len];
+    f_device = &e_device[e_len];
+    output_device = (unsigned int *)&f_device[f_len];
 
-    // // prunsigned int the time and correctness
-    // std::cout << "Done with " << FLAGS_batch_size << " queries in "
-    //     << "elapsed = " << elapsed << " milliseconds. Correctness: "
-    //     << static_cast<float>(num_correct) / FLAGS_batch_size << "\n";
+    float *all_memory_host, *input, *conv1, *conv2, *fc1, *fc2;
+    unsigned int *output;
 
-    // don't need to clean up since we stop running everything.... so good
+    // malloc space for everything in host
+    cudaMallocHost((void **)&all_memory_host, (input_len + conv1_len + conv2_len + fc1_len + fc2_len) * sizeof(float) + output_len * sizeof(int));
+    input = &all_memory_host[0];
+    conv1 = &input[input_len];
+    conv2 = &conv1[conv1_len];
+    fc1 = &conv2[conv2_len];
+    fc2 = &fc1[fc1_len];
+    output = (unsigned int *)&fc2[fc2_len];
+    float *ref = allocate<float>(ref_dims);
+
+    // Load data into input and ref
+    load_data(input, ref);
+
+    // Load model
+    load_model(conv1, conv2, fc1, fc2);
+
+    // do its thing
+    const auto start = now();
+    forward_operation(input, conv1, conv2, fc1, fc2, output);
+    const auto end = now();
+
+    // get elapsed time in milliseconds
+    const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+
+    // Get reference
+    unsigned int *ground_truth = allocate<unsigned int>(FLAGS_batch_size);
+    get_ground_truth(ref, ground_truth);
+
+    // Calculate correctness
+    unsigned int num_correct = 0;
+    for (unsigned int i = 0; i < FLAGS_batch_size; i++) {
+        if (output[i] == ground_truth[i]) {
+            num_correct++;
+        }
+    }
+
+    // prunsigned int the time and correctness
+    std::cout << "Done with " << FLAGS_batch_size << " queries in "
+        << "elapsed = " << elapsed << " milliseconds. Correctness: "
+        << static_cast<float>(num_correct) / FLAGS_batch_size << "\n";
+
+    cleanUp();
+
     return 0;
 }
