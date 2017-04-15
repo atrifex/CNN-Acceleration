@@ -40,11 +40,11 @@ using std::vector;
 #define AVG_COUNT                   (POOL_SIZE * POOL_SIZE)
 
 #define NUM_DIGITS                  10
-#define NUM_CMD_QUEUES                 16
-#define QUEUE_IDX_CONV1            (NUM_CMD_QUEUES - 1)
-#define STREAM_IDX_CONV2            (NUM_CMD_QUEUES - 2)
-#define STREAM_IDX_FC1              (NUM_CMD_QUEUES - 3)
-#define STREAM_IDX_FC2              (NUM_CMD_QUEUES - 4)
+#define NUM_CMD_QUEUES              16
+#define QUEUE_IDX_CONV1             (NUM_CMD_QUEUES - 1)
+#define QUEUE_IDX_CONV2             (NUM_CMD_QUEUES - 2)
+#define QUEUE_IDX_FC1               (NUM_CMD_QUEUES - 3)
+#define QUEUE_IDX_FC2               (NUM_CMD_QUEUES - 4)
 #define MAX_THREADS_PER_BLOCK       1024
 
 #define CONV_ROWS                   5

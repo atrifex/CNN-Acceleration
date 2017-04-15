@@ -395,36 +395,50 @@ static void get_ground_truth(const float *input, unsigned int *output) {
 */
 void forward_operation(const float *input, const float *conv1, const float *conv2, const float * fc1, const float *fc2, unsigned int *output) {
 
-    // this chunck of code is kind of extra but necessary
-    // since the provided dataset has some very weird dimensions
-    // we transform them to more human understandable ones
+    // since the provided dataset has some very weird dimensions, we transform them to more human understandable ones
     size_t lws_conv[] = {CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS};
-    size_t gws_conv1[] = {CONV1_INPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
-    size_t gws_conv2[] = {CONV2_OUTPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
 
+    /***** transform_conv1 *****/
+    size_t gws_conv1[] = {CONV1_INPUT_CHANNELS*lws_conv[0],1*lws_conv[1],1*lws_conv[2]};
 
-    // dim3 block_dim_conv(CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS);
-    // cudaMemcpyAsync(conv1_device_, conv1, conv1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV1]);
-    // transform_conv1<<<CONV1_INPUT_CHANNELS, block_dim_conv, 0, streams[STREAM_IDX_CONV1]>>>(conv1_device_, conv1_device);
-
-    // std::cout << "LENGTH: " << conv1_len << '\n';
+    // copying over conv1 buffer
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_CONV1], conv1_device_, CL_FALSE, 0, conv1_len * sizeof(float),
                 (void*)conv1, 0, NULL, NULL));
 
+    // setting arguments and calling transform_conv1 kernel
     checkErr(clSetKernelArg(kernels["transform_conv1"], 0, sizeof(cl_mem), &conv1_device_));
     checkErr(clSetKernelArg(kernels["transform_conv1"], 1, sizeof(cl_mem), &conv1_device));
     checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV1], kernels["transform_conv1"], 3, NULL, gws_conv1, lws_conv, 0, NULL, NULL));
 
-    // cudaMemcpyAsync(conv2_device_, conv2, conv2_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV2]);
-    // transform_conv2<<<CONV2_OUTPUT_CHANNELS, block_dim_conv, 0, streams[STREAM_IDX_CONV2]>>>(conv2_device_, conv2_device);
-    //
-    //
-    //
-    // cudaMemcpyAsync(fc1_device_, fc1, fc1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_FC1]);
-    // dim3 block_dim_fc1(d_dims[3], d_dims[2], d_dims[1]);
-    // transform_fc1<<<FC1_COLS, block_dim_fc1, 0, streams[STREAM_IDX_FC1]>>>(fc1_device_, fc1_device);
-    // cudaMemcpyAsync(fc2_device, fc2, fc2_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_FC2]);
-    //
+    /***** transform_conv2 *****/
+    size_t gws_conv2[] = {CONV2_OUTPUT_CHANNELS*lws_conv[0],1*lws_conv[1],1*lws_conv[2]};
+
+    // copying over conv2 buffer
+    checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_CONV2], conv2_device_, CL_FALSE, 0, conv2_len * sizeof(float),
+                (void*)conv2, 0, NULL, NULL));
+
+    // setting arguments and calling transform_conv2 kernel
+    checkErr(clSetKernelArg(kernels["transform_conv2"], 0, sizeof(cl_mem), &conv2_device_));
+    checkErr(clSetKernelArg(kernels["transform_conv2"], 1, sizeof(cl_mem), &conv2_device));
+    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV2], kernels["transform_conv2"], 3, NULL, gws_conv2, lws_conv, 0, NULL, NULL));
+
+    /***** transform_fc1 *****/
+    size_t lws_fc1[] = {d_dims[3], d_dims[2], d_dims[1]};
+    size_t gws_fc1[] = {FC1_COLS*lws_fc1[0],lws_fc1[1],lws_fc1[2]};
+
+    // copying over fc1 buffer
+    checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_FC1], fc1_device_, CL_FALSE, 0, fc1_len * sizeof(float),
+                (void*)fc1, 0, NULL, NULL));
+
+    // setting arguments and calling transform_conv2 kernel
+    checkErr(clSetKernelArg(kernels["transform_fc1"], 0, sizeof(cl_mem), &fc1_device_));
+    checkErr(clSetKernelArg(kernels["transform_fc1"], 1, sizeof(cl_mem), &fc1_device));
+    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_FC1], kernels["transform_fc1"], 3, NULL, gws_fc1, lws_fc1, 0, NULL, NULL));
+
+    // Copy fc2 into device memory
+    checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_FC2], fc2_device, CL_FALSE, 0, fc2_len * sizeof(float),
+                (void*)fc2, 0, NULL, NULL));
+
     // // s is the index for streams, reset to 0 for every kernel lunch such that all kernels will be streamlined
     // // i.e. a new kernel that is using stream x will only use the data calculated by the previous kernel that is also using stream x
     // unsigned int s = 0;
@@ -477,7 +491,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     // // matrix multiplication kernel 2, again multiply two matrices
     // s = 0;
     // batch_num = batch_num / BATCH_NUM_FACTOR;
-    // cudaStreamSynchronize(streams[STREAM_IDX_CONV2]);
+    // cudaStreamSynchronize(streams[QUEUE_IDX_CONV2]);
     // for (unsigned int start = 0; start < b_unroll_dims[0]; start += batch_num) {
     //     matrix_multiplication2<<<min(static_cast<unsigned int>(ceil(batch_num / 2.0f)), static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f))), block_dim_mm, 0, streams[s]>>>(conv2_device, b_unroll_device, c_device, start);
     //     s = (s + 1) % NUM_CMD_QUEUES;
@@ -496,7 +510,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     //
     // // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
     // s = 0;
-    // cudaStreamSynchronize(streams[STREAM_IDX_FC1]);
+    // cudaStreamSynchronize(streams[QUEUE_IDX_FC1]);
     // for (unsigned int start = 0; start < d_dims2[0]; start += batch_num) {
     //     const unsigned int a_height = min(batch_num, d_dims2[0] - start);
     //     fully_forward1<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_mm, 0, streams[s]>>>(d_device, fc1_device, e_device, a_height, start);
@@ -507,7 +521,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     // // well, only if you think not including relu is different, then it is different
     // s = 0;
     // dim3 block_dim_ff(TILE_SIZE, TILE_SIZE, 1);
-    // cudaStreamSynchronize(streams[STREAM_IDX_FC2]);
+    // cudaStreamSynchronize(streams[QUEUE_IDX_FC2]);
     // for (unsigned int start = 0; start < e_dims[0]; start += batch_num) {
     //     const unsigned int a_height = min(batch_num, e_dims[0] - start);
     //     fully_forward2<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_ff, 0, streams[s]>>>(e_device, fc2_device, f_device, a_height, start);
