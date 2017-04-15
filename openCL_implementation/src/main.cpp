@@ -546,15 +546,25 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     }
 
     // average pool kernel 2, really, you need to read this to understand average?
-    // q = 0;
-    // layers = BLOCK_SIZE / D_NUM_ELEMENTS;
-    // dim3 block_dim_avg2(d_dims[2], d_dims[3], layers);
-    // for (unsigned int start = 0; start < c_dims[0]; start += batch_num) {
-    //     const unsigned int todo_count = min(batch_num, c_dims[0] - start);
-    //     const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
-    //     average_pool2<<<grid_size, block_dim_avg2, 0, streams[s]>>>(c_device, d_device, start, start + todo_count);
-    //     q = (q + 1) % NUM_CMD_QUEUES;
-    // }
+    q = 0;
+    layers = BLOCK_SIZE / D_NUM_ELEMENTS;
+    size_t lws_avg2[] = {d_dims[2], d_dims[3], layers};
+    for (unsigned int start = 0; start < c_dims[0]; start += batch_num) {
+        const unsigned int todo_count = min(batch_num, c_dims[0] - start);
+        const unsigned int wgGlobSize = static_cast<unsigned int>(ceil(todo_count / (float)layers));
+        const unsigned int offsetFromStart = start + todo_count;
+
+        size_t gws_avg2[] = {wgGlobSize*lws_avg2[0], 1*lws_avg2[1], 1*lws_avg2[2]};
+
+        // setting arguments and calling average_pool2 kernel
+        checkErr(clSetKernelArg(kernels["average_pool2"], 0, sizeof(cl_mem), &c_device));
+        checkErr(clSetKernelArg(kernels["average_pool2"], 1, sizeof(cl_mem), &d_device));
+        checkErr(clSetKernelArg(kernels["average_pool2"], 2, sizeof(cl_uint), &start));
+        checkErr(clSetKernelArg(kernels["average_pool2"], 3, sizeof(cl_uint), &offsetFromStart));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["average_pool2"], 3, NULL, gws_avg2, lws_avg2, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
     //
     // // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
     // s = 0;
