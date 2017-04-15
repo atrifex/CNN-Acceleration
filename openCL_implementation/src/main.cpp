@@ -399,9 +399,9 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     // since the provided dataset has some very weird dimensions
     // we transform them to more human understandable ones
     size_t lws_conv[] = {CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS};
-    size_t gws_conv1[] = {CONV1_INPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1};
+    size_t gws_conv1[] = {CONV1_INPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
+    size_t gws_conv2[] = {CONV2_OUTPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
 
-    // size_t gws_conv2[] = {CONV2_OUTPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
 
     // dim3 block_dim_conv(CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS);
     // cudaMemcpyAsync(conv1_device_, conv1, conv1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV1]);
