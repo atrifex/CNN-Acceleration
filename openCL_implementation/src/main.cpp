@@ -654,9 +654,6 @@ int main(int argc, char **argv) {
 
     initializeOpenCLParameters();
 
-#pragma mark - Global Variable setup
-{
-
     FLAGS_testdata = std::string(argv[1]);
     FLAGS_model = std::string(argv[2]);
     FLAGS_batch_size = atoi(argv[3]);
@@ -689,7 +686,6 @@ int main(int argc, char **argv) {
     e_len = flattened_length(e_dims);
     f_len = flattened_length(f_dims);
     output_len = input_dims[0];
-}
 
     // Create buffers for everything...
     conv1_device_ = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * conv1_len, NULL, NULL);
