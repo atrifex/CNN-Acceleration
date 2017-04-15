@@ -439,21 +439,32 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_FC2], fc2_device, CL_FALSE, 0, fc2_len * sizeof(float),
                 (void*)fc2, 0, NULL, NULL));
 
-    // // s is the index for streams, reset to 0 for every kernel lunch such that all kernels will be streamlined
-    // // i.e. a new kernel that is using stream x will only use the data calculated by the previous kernel that is also using stream x
-    // unsigned int s = 0;
-    //
-    // // batch num is how much data we will be using for each kernel, need to change only once for unroll2
-    // unsigned int batch_num = BATCH_NUM_PER_STREAM;
-    //
-    // // unroll kernel 1, this will unroll from input dataset, also use async memcpy to make it more efficient
-    // for (unsigned int start = 0; start < input_dims[0]; start += batch_num) {
-    //     const unsigned int grid_size = min(batch_num, input_dims[0] - start);
-    //     const unsigned int offset = start * INPUT_NUM_ELEMENTS;
-    //     cudaMemcpyAsync(input_device + offset, input + offset, grid_size * INPUT_NUM_ELEMENTS * sizeof(float), cudaMemcpyHostToDevice, streams[s]);
-    //     unroll1<<<grid_size, BLOCK_SIZE, 0, streams[s]>>>(input_device, input_unroll_device, start);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
+    // s is the index for queues, reset to 0 for every kernel lunch such that all kernels will be streamlined
+    // i.e. a new kernel that is using stream x will only use the data calculated by the previous kernel that is also using stream x
+    unsigned int q = 0;
+
+    // batch num is how much data we will be using for each kernel, need to change only once for unroll2
+    unsigned int batch_num = BATCH_NUM_PER_STREAM;
+
+    // unroll kernel 1, this will unroll from input dataset, also use async memcpy to make it more efficient
+    for (unsigned int start = 0; start < input_dims[0]; start += batch_num) {
+        const unsigned int wg_size = min(batch_num, input_dims[0] - start);
+        const unsigned int offset = start * INPUT_NUM_ELEMENTS;
+
+        // copy over batch of memory to be worked on
+        checkErr(clEnqueueWriteBuffer(queues[q], input_device, CL_FALSE, offset, wg_size * INPUT_NUM_ELEMENTS * sizeof(float),
+                    (void*)(input + offset), 0, NULL, NULL));
+
+        // setting arguments and calling unroll1 kernel
+        size_t lws_unroll1[1] = {BLOCK_SIZE};
+        size_t gws_unroll1[1] = {wg_size*BLOCK_SIZE};
+        checkErr(clSetKernelArg(kernels["unroll1"], 0, sizeof(cl_mem), &input_device));
+        checkErr(clSetKernelArg(kernels["unroll1"], 1, sizeof(cl_mem), &input_unroll_device));
+        checkErr(clSetKernelArg(kernels["unroll1"], 2, sizeof(cl_mem), &start));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll1"], 1, NULL, gws_unroll1, lws_unroll1, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
     //
     // // matrix multiplication kernel 1, you know, multiply two matrices
     // s = 0;

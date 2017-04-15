@@ -20,6 +20,7 @@
 using std::string;
 using std::map;
 using std::vector;
+using std::min;
 
 #include <hdf5.h>
 
