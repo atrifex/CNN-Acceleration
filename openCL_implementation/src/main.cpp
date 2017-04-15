@@ -565,26 +565,47 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
-    //
-    // // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
-    // s = 0;
-    // cudaStreamSynchronize(streams[QUEUE_IDX_FC1]);
-    // for (unsigned int start = 0; start < d_dims2[0]; start += batch_num) {
-    //     const unsigned int a_height = min(batch_num, d_dims2[0] - start);
-    //     fully_forward1<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_mm, 0, streams[s]>>>(d_device, fc1_device, e_device, a_height, start);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
-    //
-    // // fully forward kernel 2, ok, so this is a different one, jk it's not
-    // // well, only if you think not including relu is different, then it is different
-    // s = 0;
-    // dim3 block_dim_ff(TILE_SIZE, TILE_SIZE, 1);
-    // cudaStreamSynchronize(streams[QUEUE_IDX_FC2]);
-    // for (unsigned int start = 0; start < e_dims[0]; start += batch_num) {
-    //     const unsigned int a_height = min(batch_num, e_dims[0] - start);
-    //     fully_forward2<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_ff, 0, streams[s]>>>(e_device, fc2_device, f_device, a_height, start);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
+
+    // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
+    q = 0;
+    clFinish(queues[QUEUE_IDX_FC1]);
+    size_t lws_ff1[] = {lws_mm[0], lws_mm[1], lws_mm[2]};
+    for (unsigned int start = 0; start < d_dims2[0]; start += batch_num) {
+        const unsigned int a_height = min(batch_num, d_dims2[0] - start);
+
+        size_t gws_ff1[] = {((static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)))*lws_ff1[0]), 1*lws_ff1[1], 1*lws_ff1[2]};
+
+        // setting arguments and calling fully_forward1 kernel
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 0, sizeof(cl_mem), &d_device));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 1, sizeof(cl_mem), &fc1_device));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 2, sizeof(cl_mem), &e_device));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 3, sizeof(cl_uint), &a_height));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 4, sizeof(cl_uint), &start));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["fully_forward1"], 2, NULL, gws_ff1, lws_ff1, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
+
+    // fully forward kernel 2, ok, so this is a different one, jk it's not
+    // well, only if you think not including relu is different, then it is different
+    q = 0;
+    size_t lws_ff2[] = {TILE_SIZE, TILE_SIZE, 1};
+    clFinish(queues[QUEUE_IDX_FC2]);
+    for (unsigned int start = 0; start < e_dims[0]; start += batch_num) {
+        const unsigned int a_height = min(batch_num, e_dims[0] - start);
+
+        size_t gws_ff2[] = {((static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)))*lws_ff2[0]), 1*lws_ff2[1], 1*lws_ff2[2]};
+
+        // setting arguments and calling fully_forward1 kernel
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 0, sizeof(cl_mem), &e_device));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 1, sizeof(cl_mem), &fc2_device));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 2, sizeof(cl_mem), &f_device));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 3, sizeof(cl_uint), &a_height));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 4, sizeof(cl_uint), &start));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["fully_forward1"], 2, NULL, gws_ff2, lws_ff2, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
     //
     // // arg max kernel, search for the largest number...'s index in the array of arrays, the index is the index of the sub array (between 0 - 9)
     // s = 0;
