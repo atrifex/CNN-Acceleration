@@ -72,7 +72,7 @@ cl_mem f_device;
 cl_mem output_device;
 
 cl_platform_id platform;                        // OpenCL platform
-cl_device_id device;                         // device ID
+cl_device_id device;                            // device ID
 cl_context context;                             // context
 cl_command_queue queues[NUM_CMD_QUEUES];        // command queue
 cl_program program;                             // program
@@ -154,13 +154,6 @@ const char *getErrorString(cl_int error){
     }
 }
 
-inline void checkErr(cl_int error){
-    if (error != CL_SUCCESS) {
-        std::cerr << "ERROR: " <<  getErrorString(error)  << std::endl;
-        exit(EXIT_FAILURE);
-    }
-}
-
 void cleanUp(){
     for(int i = 0; i < NUM_CMD_QUEUES; i++){
         if (queues[i] != 0)
@@ -177,6 +170,14 @@ void cleanUp(){
 
     if (context != 0)
         clReleaseContext(context);
+}
+
+inline void checkErr(cl_int error){
+    if (error != CL_SUCCESS) {
+        std::cerr << "ERROR: " <<  getErrorString(error)  << std::endl;
+        cleanUp();
+        exit(EXIT_FAILURE);
+    }
 }
 
 cl_program createProgram(cl_context context, cl_device_id device, const char* fileName){
@@ -397,116 +398,134 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     // this chunck of code is kind of extra but necessary
     // since the provided dataset has some very weird dimensions
     // we transform them to more human understandable ones
-    dim3 block_dim_conv(CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS);
-    dim3 block_dim_fc1(d_dims[3], d_dims[2], d_dims[1]);
-    cudaMemcpyAsync(conv1_device_, conv1, conv1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV1]);
-    transform_conv1<<<CONV1_INPUT_CHANNELS, block_dim_conv, 0, streams[STREAM_IDX_CONV1]>>>(conv1_device_, conv1_device);
-    cudaMemcpyAsync(conv2_device_, conv2, conv2_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV2]);
-    transform_conv2<<<CONV2_OUTPUT_CHANNELS, block_dim_conv, 0, streams[STREAM_IDX_CONV2]>>>(conv2_device_, conv2_device);
-    cudaMemcpyAsync(fc1_device_, fc1, fc1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_FC1]);
-    transform_fc1<<<FC1_COLS, block_dim_fc1, 0, streams[STREAM_IDX_FC1]>>>(fc1_device_, fc1_device);
-    cudaMemcpyAsync(fc2_device, fc2, fc2_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_FC2]);
+    size_t lws_conv[] = {CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS};
+    size_t gws_conv1[] = {CONV1_INPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
 
-    // s is the index for streams, reset to 0 for every kernel lunch such that all kernels will be streamlined
-    // i.e. a new kernel that is using stream x will only use the data calculated by the previous kernel that is also using stream x
-    unsigned int s = 0;
+    // size_t gws_conv2[] = {CONV2_OUTPUT_CHANNELS*CONV_COLS,1*CONV_ROWS,1*CONV1_OUTPUT_CHANNELS};
 
-    // batch num is how much data we will be using for each kernel, need to change only once for unroll2
-    unsigned int batch_num = BATCH_NUM_PER_STREAM;
+    // dim3 block_dim_conv(CONV_COLS, CONV_ROWS, CONV1_OUTPUT_CHANNELS);
+    // cudaMemcpyAsync(conv1_device_, conv1, conv1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV1]);
+    // transform_conv1<<<CONV1_INPUT_CHANNELS, block_dim_conv, 0, streams[STREAM_IDX_CONV1]>>>(conv1_device_, conv1_device);
 
-    // unroll kernel 1, this will unroll from input dataset, also use async memcpy to make it more efficient
-    for (unsigned int start = 0; start < input_dims[0]; start += batch_num) {
-        const unsigned int grid_size = min(batch_num, input_dims[0] - start);
-        const unsigned int offset = start * INPUT_NUM_ELEMENTS;
-        cudaMemcpyAsync(input_device + offset, input + offset, grid_size * INPUT_NUM_ELEMENTS * sizeof(float), cudaMemcpyHostToDevice, streams[s]);
-        unroll1<<<grid_size, BLOCK_SIZE, 0, streams[s]>>>(input_device, input_unroll_device, start);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
+    // std::cout << "LENGTH: " << conv1_len << '\n';
+    checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_CONV1], conv1_device_, CL_FALSE, 0, conv1_len * sizeof(float),
+                (void*)conv1, 0, NULL, NULL));
 
-    // matrix multiplication kernel 1, you know, multiply two matrices
-    s = 0;
-    dim3 block_dim_mm(HALF_TILE_SIZE, HALF_TILE_SIZE, 1);
-    cudaStreamSynchronize(streams[STREAM_IDX_CONV1]);
-    for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
-        dim3 grid_dim_matrix_mul1(MATRIX_MUL1_BLOCKS_PER_NUM, min(batch_num, input_unroll_dims[0] - start), 1);
-        matrix_multiplication1<<<grid_dim_matrix_mul1, block_dim_mm, 0, streams[s]>>>(conv1_device, input_unroll_device, a_device, start);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
+    checkErr(clSetKernelArg(kernels["transform_conv1"], 0, sizeof(cl_mem), &conv1_device_));
+    checkErr(clSetKernelArg(kernels["transform_conv1"], 1, sizeof(cl_mem), &conv1_device));
+    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV1], kernels["transform_conv1"], 3, NULL, gws_conv1, lws_conv, 0, NULL, NULL));
 
-    // average pool kernel 1, err, like the name suggests, it averages stuff...
-    s = 0;
-    unsigned int layers = MAX_THREADS_PER_BLOCK / B_NUM_ELEMENTS;
-    dim3 block_dim_avg1(b_dims[2], b_dims[3], layers);
-    for (unsigned int start = 0; start < a_dims[0]; start += batch_num) {
-        const unsigned int todo_count = min(batch_num, a_dims[0] - start);
-        const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
-        average_pool1<<<grid_size, block_dim_avg1, 0, streams[s]>>>(a_device, b_device, start, start + todo_count);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
+    // cudaMemcpyAsync(conv2_device_, conv2, conv2_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_CONV2]);
+    // transform_conv2<<<CONV2_OUTPUT_CHANNELS, block_dim_conv, 0, streams[STREAM_IDX_CONV2]>>>(conv2_device_, conv2_device);
+    //
+    //
+    //
+    // cudaMemcpyAsync(fc1_device_, fc1, fc1_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_FC1]);
+    // dim3 block_dim_fc1(d_dims[3], d_dims[2], d_dims[1]);
+    // transform_fc1<<<FC1_COLS, block_dim_fc1, 0, streams[STREAM_IDX_FC1]>>>(fc1_device_, fc1_device);
+    // cudaMemcpyAsync(fc2_device, fc2, fc2_len * sizeof(float), cudaMemcpyHostToDevice, streams[STREAM_IDX_FC2]);
+    //
+    // // s is the index for streams, reset to 0 for every kernel lunch such that all kernels will be streamlined
+    // // i.e. a new kernel that is using stream x will only use the data calculated by the previous kernel that is also using stream x
+    // unsigned int s = 0;
+    //
+    // // batch num is how much data we will be using for each kernel, need to change only once for unroll2
+    // unsigned int batch_num = BATCH_NUM_PER_STREAM;
+    //
+    // // unroll kernel 1, this will unroll from input dataset, also use async memcpy to make it more efficient
+    // for (unsigned int start = 0; start < input_dims[0]; start += batch_num) {
+    //     const unsigned int grid_size = min(batch_num, input_dims[0] - start);
+    //     const unsigned int offset = start * INPUT_NUM_ELEMENTS;
+    //     cudaMemcpyAsync(input_device + offset, input + offset, grid_size * INPUT_NUM_ELEMENTS * sizeof(float), cudaMemcpyHostToDevice, streams[s]);
+    //     unroll1<<<grid_size, BLOCK_SIZE, 0, streams[s]>>>(input_device, input_unroll_device, start);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // matrix multiplication kernel 1, you know, multiply two matrices
+    // s = 0;
+    // dim3 block_dim_mm(HALF_TILE_SIZE, HALF_TILE_SIZE, 1);
+    // cudaStreamSynchronize(streams[QUEUE_IDX_CONV1]);
+    // for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
+    //     dim3 grid_dim_matrix_mul1(MATRIX_MUL1_BLOCKS_PER_NUM, min(batch_num, input_unroll_dims[0] - start), 1);
+    //     matrix_multiplication1<<<grid_dim_matrix_mul1, block_dim_mm, 0, streams[s]>>>(conv1_device, input_unroll_device, a_device, start);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // average pool kernel 1, err, like the name suggests, it averages stuff...
+    // s = 0;
+    // unsigned int layers = MAX_THREADS_PER_BLOCK / B_NUM_ELEMENTS;
+    // dim3 block_dim_avg1(b_dims[2], b_dims[3], layers);
+    // for (unsigned int start = 0; start < a_dims[0]; start += batch_num) {
+    //     const unsigned int todo_count = min(batch_num, a_dims[0] - start);
+    //     const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
+    //     average_pool1<<<grid_size, block_dim_avg1, 0, streams[s]>>>(a_device, b_device, start, start + todo_count);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // unroll kernel 2, now we have 32 channels per number, so multiply the batch number by 32
+    // // and we don't need to copy data from anywhere
+    // s = 0;
+    // batch_num = batch_num * BATCH_NUM_FACTOR;
+    // layers = UNROLL2_LAYERS;
+    // const unsigned int total_channels = b_dims[0] * b_dims[1];
+    // dim3 block_dim_unroll2(b_unroll_dims[3], layers, 1);
+    // for (unsigned int start = 0; start < total_channels; start += batch_num) {
+    //     unroll2<<<min(static_cast<unsigned int>(ceil(batch_num / (float)layers)), static_cast<unsigned int>(ceil(total_channels - start) / (float)layers)), block_dim_unroll2, 0, streams[s]>>>(b_device, b_unroll_device, start);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // matrix multiplication kernel 2, again multiply two matrices
+    // s = 0;
+    // batch_num = batch_num / BATCH_NUM_FACTOR;
+    // cudaStreamSynchronize(streams[STREAM_IDX_CONV2]);
+    // for (unsigned int start = 0; start < b_unroll_dims[0]; start += batch_num) {
+    //     matrix_multiplication2<<<min(static_cast<unsigned int>(ceil(batch_num / 2.0f)), static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f))), block_dim_mm, 0, streams[s]>>>(conv2_device, b_unroll_device, c_device, start);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // average pool kernel 2, really, you need to read this to understand average?
+    // s = 0;
+    // layers = BLOCK_SIZE / D_NUM_ELEMENTS;
+    // dim3 block_dim_avg2(d_dims[2], d_dims[3], layers);
+    // for (unsigned int start = 0; start < c_dims[0]; start += batch_num) {
+    //     const unsigned int todo_count = min(batch_num, c_dims[0] - start);
+    //     const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
+    //     average_pool2<<<grid_size, block_dim_avg2, 0, streams[s]>>>(c_device, d_device, start, start + todo_count);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
+    // s = 0;
+    // cudaStreamSynchronize(streams[STREAM_IDX_FC1]);
+    // for (unsigned int start = 0; start < d_dims2[0]; start += batch_num) {
+    //     const unsigned int a_height = min(batch_num, d_dims2[0] - start);
+    //     fully_forward1<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_mm, 0, streams[s]>>>(d_device, fc1_device, e_device, a_height, start);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // fully forward kernel 2, ok, so this is a different one, jk it's not
+    // // well, only if you think not including relu is different, then it is different
+    // s = 0;
+    // dim3 block_dim_ff(TILE_SIZE, TILE_SIZE, 1);
+    // cudaStreamSynchronize(streams[STREAM_IDX_FC2]);
+    // for (unsigned int start = 0; start < e_dims[0]; start += batch_num) {
+    //     const unsigned int a_height = min(batch_num, e_dims[0] - start);
+    //     fully_forward2<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_ff, 0, streams[s]>>>(e_device, fc2_device, f_device, a_height, start);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
+    //
+    // // arg max kernel, search for the largest number...'s index in the array of arrays, the index is the index of the sub array (between 0 - 9)
+    // s = 0;
+    // for (unsigned int start = 0; start < f_dims[0]; start += batch_num) {
+    //     const unsigned int todo_count = min(batch_num, f_dims[0] - start);
+    //     arg_max<<<static_cast<unsigned int>(ceil(todo_count / (float)BLOCK_SIZE)), BLOCK_SIZE, 0, streams[s]>>>(f_device, output_device, f_len, start);
+    //     cudaMemcpyAsync(output + start, output_device + start, todo_count * sizeof(int), cudaMemcpyDeviceToHost, streams[s]);
+    //     s = (s + 1) % NUM_CMD_QUEUES;
+    // }
 
-    // unroll kernel 2, now we have 32 channels per number, so multiply the batch number by 32
-    // and we don't need to copy data from anywhere
-    s = 0;
-    batch_num = batch_num * BATCH_NUM_FACTOR;
-    layers = UNROLL2_LAYERS;
-    const unsigned int total_channels = b_dims[0] * b_dims[1];
-    dim3 block_dim_unroll2(b_unroll_dims[3], layers, 1);
-    for (unsigned int start = 0; start < total_channels; start += batch_num) {
-        unroll2<<<min(static_cast<unsigned int>(ceil(batch_num / (float)layers)), static_cast<unsigned int>(ceil(total_channels - start) / (float)layers)), block_dim_unroll2, 0, streams[s]>>>(b_device, b_unroll_device, start);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
-
-    // matrix multiplication kernel 2, again multiply two matrices
-    s = 0;
-    batch_num = batch_num / BATCH_NUM_FACTOR;
-    cudaStreamSynchronize(streams[STREAM_IDX_CONV2]);
-    for (unsigned int start = 0; start < b_unroll_dims[0]; start += batch_num) {
-        matrix_multiplication2<<<min(static_cast<unsigned int>(ceil(batch_num / 2.0f)), static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f))), block_dim_mm, 0, streams[s]>>>(conv2_device, b_unroll_device, c_device, start);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
-
-    // average pool kernel 2, really, you need to read this to understand average?
-    s = 0;
-    layers = BLOCK_SIZE / D_NUM_ELEMENTS;
-    dim3 block_dim_avg2(d_dims[2], d_dims[3], layers);
-    for (unsigned int start = 0; start < c_dims[0]; start += batch_num) {
-        const unsigned int todo_count = min(batch_num, c_dims[0] - start);
-        const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
-        average_pool2<<<grid_size, block_dim_avg2, 0, streams[s]>>>(c_device, d_device, start, start + todo_count);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
-
-    // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
-    s = 0;
-    cudaStreamSynchronize(streams[STREAM_IDX_FC1]);
-    for (unsigned int start = 0; start < d_dims2[0]; start += batch_num) {
-        const unsigned int a_height = min(batch_num, d_dims2[0] - start);
-        fully_forward1<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_mm, 0, streams[s]>>>(d_device, fc1_device, e_device, a_height, start);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
-
-    // fully forward kernel 2, ok, so this is a different one, jk it's not
-    // well, only if you think not including relu is different, then it is different
-    s = 0;
-    dim3 block_dim_ff(TILE_SIZE, TILE_SIZE, 1);
-    cudaStreamSynchronize(streams[STREAM_IDX_FC2]);
-    for (unsigned int start = 0; start < e_dims[0]; start += batch_num) {
-        const unsigned int a_height = min(batch_num, e_dims[0] - start);
-        fully_forward2<<<static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)), block_dim_ff, 0, streams[s]>>>(e_device, fc2_device, f_device, a_height, start);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
-
-    // arg max kernel, search for the largest number...'s index in the array of arrays, the index is the index of the sub array (between 0 - 9)
-    s = 0;
-    for (unsigned int start = 0; start < f_dims[0]; start += batch_num) {
-        const unsigned int todo_count = min(batch_num, f_dims[0] - start);
-        arg_max<<<static_cast<unsigned int>(ceil(todo_count / (float)BLOCK_SIZE)), BLOCK_SIZE, 0, streams[s]>>>(f_device, output_device, f_len, start);
-        cudaMemcpyAsync(output + start, output_device + start, todo_count * sizeof(int), cudaMemcpyDeviceToHost, streams[s]);
-        s = (s + 1) % NUM_CMD_QUEUES;
-    }
-
-    // if sync is outside of this function, then boom!
-    cudaDeviceSynchronize();
+    // wait for all of the queues to finish
+    for(int i = 0; i < NUM_CMD_QUEUES; i++)
+        checkErr(clFinish(queues[i]));
 }
 
 

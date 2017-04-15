@@ -41,7 +41,7 @@ using std::vector;
 
 #define NUM_DIGITS                  10
 #define NUM_CMD_QUEUES                 16
-#define STREAM_IDX_CONV1            (NUM_CMD_QUEUES - 1)
+#define QUEUE_IDX_CONV1            (NUM_CMD_QUEUES - 1)
 #define STREAM_IDX_CONV2            (NUM_CMD_QUEUES - 2)
 #define STREAM_IDX_FC1              (NUM_CMD_QUEUES - 3)
 #define STREAM_IDX_FC2              (NUM_CMD_QUEUES - 4)
