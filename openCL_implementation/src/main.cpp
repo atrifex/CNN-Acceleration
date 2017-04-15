@@ -469,17 +469,17 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
     // matrix multiplication kernel 1
     q = 0;
-    size_t lws_mm1[] = {HALF_TILE_SIZE, HALF_TILE_SIZE, 1};
+    size_t lws_mm[] = {HALF_TILE_SIZE, HALF_TILE_SIZE, 1};
     clFinish(queues[QUEUE_IDX_CONV1]);
     for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
-        size_t gws_mm1[] = {MATRIX_MUL1_BLOCKS_PER_NUM*lws_mm1[0], min(batch_num, input_unroll_dims[0] - start)*lws_mm1[1], 1*lws_mm1[2]};
+        size_t gws_mm1[] = {MATRIX_MUL1_BLOCKS_PER_NUM*lws_mm[0], min(batch_num, input_unroll_dims[0] - start)*lws_mm[1], 1*lws_mm[2]};
 
         // setting arguments and calling matrix_multiplication1 kernel
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 0, sizeof(cl_mem), &conv1_device));
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 1, sizeof(cl_mem), &input_unroll_device));
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 2, sizeof(cl_mem), &a_device));
         checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 3, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication1"], 2, NULL, gws_mm1, lws_mm1, 0, NULL, NULL));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication1"], 2, NULL, gws_mm1, lws_mm, 0, NULL, NULL));
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -514,8 +514,8 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     size_t lws_unroll2[] = {b_unroll_dims[3], layers, 1};
     for (unsigned int start = 0; start < total_channels; start += batch_num) {
         size_t gws_unroll2[] = {(min(static_cast<unsigned int>(ceil(batch_num / (float)layers)),
-                static_cast<unsigned int>(ceil(total_channels - start) / (float)layers))*lws_unroll2[0]),
-                1*lws_unroll2[1], 1*lws_unroll2[2]};
+                                static_cast<unsigned int>(ceil(total_channels - start) / (float)layers))*lws_unroll2[0]),
+                                1*lws_unroll2[1], 1*lws_unroll2[2]};
 
         // setting arguments and calling unroll2 kernel
         checkErr(clSetKernelArg(kernels["unroll2"], 0, sizeof(cl_mem), &b_device));
@@ -525,25 +525,35 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
-    // 
-    // // matrix multiplication kernel 2, again multiply two matrices
-    // s = 0;
-    // batch_num = batch_num / BATCH_NUM_FACTOR;
-    // cudaStreamSynchronize(streams[QUEUE_IDX_CONV2]);
-    // for (unsigned int start = 0; start < b_unroll_dims[0]; start += batch_num) {
-    //     matrix_multiplication2<<<min(static_cast<unsigned int>(ceil(batch_num / 2.0f)), static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f))), block_dim_mm, 0, streams[s]>>>(conv2_device, b_unroll_device, c_device, start);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
 
-    // // average pool kernel 2, really, you need to read this to understand average?
-    // s = 0;
+    // matrix multiplication kernel 2, again multiply two matrices
+    q = 0;
+    batch_num = batch_num / BATCH_NUM_FACTOR;
+    clFinish(queues[QUEUE_IDX_CONV2]);
+    for (unsigned int start = 0; start < b_unroll_dims[0]; start += batch_num) {
+        size_t gws_mm2[] = {(min(static_cast<unsigned int>(ceil(batch_num / 2.0f)),
+                            static_cast<unsigned int>(ceil((b_unroll_dims[0] - start) / 2.0f)))*lws_mm[0]),
+                            1*lws_mm[1], 1*lws_mm[2]};
+
+        // setting arguments and calling matrix_multiplication2 kernel
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 0, sizeof(cl_mem), &conv2_device));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 1, sizeof(cl_mem), &b_unroll_device));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 2, sizeof(cl_mem), &c_device));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 3, sizeof(cl_uint), &start));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication2"], 2, NULL, gws_mm2, lws_mm, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
+
+    // average pool kernel 2, really, you need to read this to understand average?
+    // q = 0;
     // layers = BLOCK_SIZE / D_NUM_ELEMENTS;
     // dim3 block_dim_avg2(d_dims[2], d_dims[3], layers);
     // for (unsigned int start = 0; start < c_dims[0]; start += batch_num) {
     //     const unsigned int todo_count = min(batch_num, c_dims[0] - start);
     //     const unsigned int grid_size = static_cast<unsigned int>(ceil(todo_count / (float)layers));
     //     average_pool2<<<grid_size, block_dim_avg2, 0, streams[s]>>>(c_device, d_device, start, start + todo_count);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
+    //     q = (q + 1) % NUM_CMD_QUEUES;
     // }
     //
     // // fully forward kernel 1, even though it's named different, but deep down it's still just matrix multiplication...
