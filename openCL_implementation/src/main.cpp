@@ -439,8 +439,8 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_FC2], fc2_device, CL_FALSE, 0, fc2_len * sizeof(float),
                 (void*)fc2, 0, NULL, NULL));
 
-    // s is the index for queues, reset to 0 for every kernel lunch such that all kernels will be streamlined
-    // i.e. a new kernel that is using stream x will only use the data calculated by the previous kernel that is also using stream x
+    // q is the index for queues, reset to 0 for every kernel lunch such that all kernels will be streamlined
+    // i.e. a new kernel that is using queue x will only use the data calculated by the previous kernel that is also using queue x
     unsigned int q = 0;
 
     // batch num is how much data we will be using for each kernel, need to change only once for unroll2
@@ -456,26 +456,34 @@ void forward_operation(const float *input, const float *conv1, const float *conv
                     (void*)(input + offset), 0, NULL, NULL));
 
         // setting arguments and calling unroll1 kernel
-        size_t lws_unroll1[1] = {BLOCK_SIZE};
-        size_t gws_unroll1[1] = {wg_size*BLOCK_SIZE};
+        size_t lws_unroll1[] = {BLOCK_SIZE};
+        size_t gws_unroll1[] = {wg_size*BLOCK_SIZE};
         checkErr(clSetKernelArg(kernels["unroll1"], 0, sizeof(cl_mem), &input_device));
         checkErr(clSetKernelArg(kernels["unroll1"], 1, sizeof(cl_mem), &input_unroll_device));
         checkErr(clSetKernelArg(kernels["unroll1"], 2, sizeof(cl_mem), &start));
         checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll1"], 1, NULL, gws_unroll1, lws_unroll1, 0, NULL, NULL));
 
+        // increment queue index
         q = (q + 1) % NUM_CMD_QUEUES;
     }
-    //
-    // // matrix multiplication kernel 1, you know, multiply two matrices
-    // s = 0;
-    // dim3 block_dim_mm(HALF_TILE_SIZE, HALF_TILE_SIZE, 1);
-    // cudaStreamSynchronize(streams[QUEUE_IDX_CONV1]);
-    // for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
-    //     dim3 grid_dim_matrix_mul1(MATRIX_MUL1_BLOCKS_PER_NUM, min(batch_num, input_unroll_dims[0] - start), 1);
-    //     matrix_multiplication1<<<grid_dim_matrix_mul1, block_dim_mm, 0, streams[s]>>>(conv1_device, input_unroll_device, a_device, start);
-    //     s = (s + 1) % NUM_CMD_QUEUES;
-    // }
-    //
+
+    // matrix multiplication kernel 1
+    q = 0;
+    size_t lws_mm1[] = {HALF_TILE_SIZE, HALF_TILE_SIZE, 1};
+    clFinish(queues[QUEUE_IDX_CONV1]);
+    for (unsigned int start = 0; start < input_unroll_dims[0]; start += batch_num) {
+        size_t gws_mm1[] = {MATRIX_MUL1_BLOCKS_PER_NUM*HALF_TILE_SIZE, min(batch_num, input_unroll_dims[0] - start)*HALF_TILE_SIZE, 1};
+
+        // setting arguments and calling matrix_multiplication1 kernel
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 0, sizeof(cl_mem), &conv1_device));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 1, sizeof(cl_mem), &input_unroll_device));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 2, sizeof(cl_mem), &a_device));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 3, sizeof(cl_mem), &start));
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication1"], 2, NULL, gws_mm1, lws_mm1, 0, NULL, NULL));
+
+        q = (q + 1) % NUM_CMD_QUEUES;
+    }
+
     // // average pool kernel 1, err, like the name suggests, it averages stuff...
     // s = 0;
     // unsigned int layers = MAX_THREADS_PER_BLOCK / B_NUM_ELEMENTS;
