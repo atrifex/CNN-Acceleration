@@ -619,8 +619,8 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         // setting arguments and calling fully_forward1 kernel
         checkErr(clSetKernelArg(kernels["arg_max"], 0, sizeof(cl_mem), &f_device), __LINE__);
         checkErr(clSetKernelArg(kernels["arg_max"], 1, sizeof(cl_mem), &output_device), __LINE__);
-        checkErr(clSetKernelArg(kernels["arg_max"], 3, sizeof(cl_uint), &f_len), __LINE__);
-        checkErr(clSetKernelArg(kernels["arg_max"], 4, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clSetKernelArg(kernels["arg_max"], 2, sizeof(cl_uint), &f_len), __LINE__);
+        checkErr(clSetKernelArg(kernels["arg_max"], 3, sizeof(cl_uint), &start), __LINE__);
         checkErr(clEnqueueNDRangeKernel(queues[q], kernels["arg_max"], 1, NULL, gws_argmax, lws_argmax, 0, NULL, NULL), __LINE__);
 
         // copy final results back to host output buffer
