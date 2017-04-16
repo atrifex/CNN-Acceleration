@@ -12,6 +12,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes: all CUDA directives have been changed to work with OpenCL
+ *
  */
 
 #define HALF_TILE_SIZE              16
