@@ -87,7 +87,7 @@
         input - pointer to the old conv1 array
         output - pointer to the new conv1 array
 */
-__kernel void transform_conv1( __global const float *input, __global float *output) {
+__kernel void transform_conv1(__global float *input, __global float *output) {
 
     // old dimmensions are (row=5, col=5, input_channel=1, output_channel=32)
     // new dimmensions are (output_channel=32, input_channel=1, row=5, col=5)
@@ -103,7 +103,7 @@ __kernel void transform_conv1( __global const float *input, __global float *outp
         input - pointer to the old conv2 array
         output - pointer to the new conv2 array
 */
-__kernel void transform_conv2( __global const float *input, __global float *output) {
+__kernel void transform_conv2(__global float *input, __global float *output) {
 
     // old dimmensions are (row=5, col=5, input_channel=32, output_channel=64)
     // new dimmensions are (output_channel=64, input_channel=32, row=5, col=5)
@@ -121,7 +121,7 @@ __kernel void transform_conv2( __global const float *input, __global float *outp
         input - pointer to the old fc1 array
         output - pointer to the new fc1 array
 */
-__kernel void transform_fc1( __global const float *input, __global float *output) {
+__kernel void transform_fc1(__global float *input, __global float *output) {
 
     // old dimmensions are (row=1024, col=128), the sub dimmensions for row are (sub_row=4, sub_col=4, channel=64)
     // old dimmensions are (row=1024, col=128), the sub dimmensions for row are (channel=64, sub_row=4, sub_col=4)
@@ -140,7 +140,7 @@ __kernel void transform_fc1( __global const float *input, __global float *output
         x_unroll - pointer to the input_unroll array
         start - the first channel's index of the current batch
 */
-__kernel void unroll1( __global const float *x, __global float *x_unroll, const unsigned int start) {
+__kernel void unroll1(__global float *x, __global float *x_unroll, const unsigned int start) {
 
     // 5 * 5 from filter size (per channel)
     const unsigned int x_unroll_height = CONV_NUM_ELEMENTS;
@@ -156,10 +156,10 @@ __kernel void unroll1( __global const float *x, __global float *x_unroll, const 
     const unsigned int address_per_channel = x_unroll_height * x_unroll_width;
 
     // load a channel of inputs into shared memory
-    __local float x_local[INPUT_NUM_ELEMENTS];
+    __local float x_shared[INPUT_NUM_ELEMENTS];
     const unsigned int x_base = channel_idx * INPUT_NUM_ELEMENTS;
-    for (unsigned int i = get_local_id(0); i < INPUT_NUM_ELEMENTS; i += get_group_id(0)) {
-        x_local[i] = x[x_base + i];
+    for (unsigned int i = get_local_id(0); i < INPUT_NUM_ELEMENTS; i += get_local_size(0)) {
+        x_shared[i] = x[x_base + i];
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -179,7 +179,7 @@ __kernel void unroll1( __global const float *x, __global float *x_unroll, const 
         for (unsigned int i = 0; i < CONV_ROWS; i++) {
             const unsigned int x_start = (x_row_base + i) * INPUT_COLS;
             for (unsigned int j = 0; j < CONV_COLS; j++) {
-                x_unroll[x_unroll_offset] = x_local[x_start + (x_col_base + j)];
+                x_unroll[x_unroll_offset] = x_shared[x_start + (x_col_base + j)];
                 x_unroll_offset += x_unroll_width;
             }
         }
@@ -199,7 +199,7 @@ __kernel void unroll1( __global const float *x, __global float *x_unroll, const 
         x_unroll - pointer to the b_unroll array
         start - the first channel's index of the current batch
 */
-__kernel void unroll2( __global const float *x, __global float *x_unroll, const unsigned int start) {
+__kernel void unroll2(__global float *x, __global float *x_unroll, const unsigned int start) {
 
     // 5 * 5 from filter size (per channel)
     const unsigned int x_unroll_height = CONV_NUM_ELEMENTS;
@@ -215,10 +215,10 @@ __kernel void unroll2( __global const float *x, __global float *x_unroll, const 
     const unsigned int address_per_channel = x_unroll_height * x_unroll_width;
 
     // load a channel of inputs into shared memory
-    __local float x_local[UNROLL2_LAYERS][B_NUM_ELEMENTS];
+    __local float x_shared[UNROLL2_LAYERS][B_NUM_ELEMENTS];
     const unsigned int x_base = channel_idx * B_NUM_ELEMENTS;
     for (unsigned int i = get_local_id(0); i < B_NUM_ELEMENTS; i += get_local_size(0)) {
-        x_local[get_local_id(1)][i] = x[x_base + i];
+        x_shared[get_local_id(1)][i] = x[x_base + i];
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -237,7 +237,7 @@ __kernel void unroll2( __global const float *x, __global float *x_unroll, const 
     for (unsigned int i = 0; i < CONV_ROWS; i++) {
         const unsigned int x_start = (x_row_base + i) * B_COLS;
         for (unsigned int j = 0; j < CONV_COLS; j++) {
-            x_unroll[x_unroll_offset] = x_local[get_local_id(1)][x_start + (x_col_base + j)];
+            x_unroll[x_unroll_offset] = x_shared[get_local_id(1)][x_start + (x_col_base + j)];
             x_unroll_offset += x_unroll_width;
         }
     }
@@ -260,7 +260,7 @@ __kernel void unroll2( __global const float *x, __global float *x_unroll, const 
         matrix_c - pointer to the a array
         start - the first number's index of the current batch
 */
-__kernel void matrix_multiplication1( __global const float *matrix_a, __global const float *matrix_b, __global float *matrix_c, const unsigned int start) {
+__kernel void matrix_multiplication1(__global float *matrix_a, __global float *matrix_b, __global float *matrix_c, const unsigned int start) {
 
     // matrix_a is not needed here since it's in constant memory
     const unsigned int a_width = CONV1_NUM_ELEMENTS_IN;
@@ -397,13 +397,23 @@ __kernel void matrix_multiplication1( __global const float *matrix_a, __global c
         matrix_c - pointer to the c array
         start - the first number's index of the current batch
 */
-__kernel void matrix_multiplication2( __global const float *matrix_a, __global const float *matrix_b, __global float *matrix_c, const unsigned int start) {
+__kernel void matrix_multiplication2(__global float *matrix_a, __global float *matrix_b, __global float *matrix_c, const unsigned int start) {
 
     const unsigned int a_width = CONV2_NUM_ELEMENTS_IN;
     const unsigned int b_height = a_width;
     const unsigned int b_width = C_NUM_ELEMENTS;
     const unsigned int c_height = CONV2_OUTPUT_CHANNELS;
     const unsigned int c_width = b_width;
+
+    // const unsigned int matrix_c_row1 = get_local_id(1);
+    // const unsigned int matrix_c_row2 = matrix_c_row1 + HALF_TILE_SIZE;
+    // const unsigned int matrix_c_row3 = matrix_c_row2 + HALF_TILE_SIZE;
+    // const unsigned int matrix_c_row4 = matrix_c_row3 + HALF_TILE_SIZE;
+
+    // const unsigned int matrix_c_col1 = get_local_id(0);
+    // const unsigned int matrix_c_col2 = matrix_c_col1 + HALF_TILE_SIZE;
+    // const unsigned int matrix_c_col3 = matrix_c_col2 + HALF_TILE_SIZE;
+    // const unsigned int matrix_c_col4 = matrix_c_col3 + HALF_TILE_SIZE;
 
     // every block deals with 2 numbers
     const unsigned int num_idx = get_group_id(0) * MATRIX_MUL2_NUMS_PER_BLOCK;
@@ -566,7 +576,7 @@ __kernel void matrix_multiplication2( __global const float *matrix_a, __global c
         start - the first number's index of the current batch
         end - the total count of numbers in the input data (each number consists of channels * row * col addresses)
 */
-__kernel void average_pool1( __global const float *x, __global float *y, const unsigned int start, const unsigned int end) {
+__kernel void average_pool1(__global float *x, __global float *y, const unsigned int start, const unsigned int end) {
 
     const float count = AVG_COUNT;
     const unsigned int row = get_local_id(1);
@@ -609,7 +619,7 @@ __kernel void average_pool1( __global const float *x, __global float *y, const u
         start - the first number index of the current batch
         end - the total count of numbers in the input data (each number consists of channels * row * col addresses)
 */
-__kernel void average_pool2( __global const float *x, __global float *y, const unsigned int start, const unsigned int end) {
+__kernel void average_pool2(__global float *x, __global float *y, const unsigned int start, const unsigned int end) {
 
     const float count = AVG_COUNT;
     const unsigned int row = get_local_id(1);
@@ -654,7 +664,7 @@ __kernel void average_pool2( __global const float *x, __global float *y, const u
         a_height - the count of numbers of the current batch
         start - the first number's index of the current batch
 */
-__kernel void fully_forward1( __global const float *matrix_a, __global const float *matrix_b, __global float *matrix_c, const unsigned int a_height, const unsigned int start) {
+__kernel void fully_forward1(__global float *matrix_a, __global float *matrix_b, __global float *matrix_c, const unsigned int a_height, const unsigned int start) {
 
     const unsigned int a_width = FC1_ROWS;
     const unsigned int b_width = FC1_COLS;
@@ -810,7 +820,7 @@ __kernel void fully_forward1( __global const float *matrix_a, __global const flo
         a_height - the count of numbers of the current batch
         start - the first number's index of the current batch
 */
-__kernel void fully_forward2( __global const float *matrix_a, __global const float *matrix_b, __global float *matrix_c, const unsigned int a_height, const unsigned int start) {
+__kernel void fully_forward2(__global float *matrix_a, __global float *matrix_b, __global float *matrix_c, const unsigned int a_height, const unsigned int start) {
 
     const unsigned int a_width = FC2_ROWS;
     const unsigned int b_height = a_width;
@@ -867,7 +877,7 @@ __kernel void fully_forward2( __global const float *matrix_a, __global const flo
         input_len - length of the f array
         start - the first number's index of the current batch
 */
-__kernel void arg_max( __global const float *input, __global unsigned int *output, const unsigned int input_len, const unsigned int start) {
+__kernel void arg_max(__global float *input, __global unsigned int *output, const unsigned int input_len, const unsigned int start) {
     const unsigned int t = (start + get_group_id(0) * get_local_size(0) + get_local_id(0)) * NUM_DIGITS;
     if (t < input_len) {
         unsigned int max_idx = 0;

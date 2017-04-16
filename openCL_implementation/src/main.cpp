@@ -636,7 +636,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 }
 
 
-/*  TODO
+/*
     main(unsigned int argc, char **argv)
     DESCRIPTION:
         The main function
