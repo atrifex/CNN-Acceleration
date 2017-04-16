@@ -172,9 +172,10 @@ void cleanUp(){
         clReleaseContext(context);
 }
 
-inline void checkErr(cl_int error){
+inline void checkErr(cl_int error, const int line){
     if (error != CL_SUCCESS) {
         std::cerr << "ERROR: " <<  getErrorString(error)  << std::endl;
+        std::cerr << "At line: " <<  line  << std::endl;
         cleanUp();
         exit(EXIT_FAILURE);
     }
@@ -197,7 +198,7 @@ cl_program createProgram(cl_context context, cl_device_id device, const char* fi
     const char *srcStr = srcStdStr.c_str();
     program = clCreateProgramWithSource(context, 1, (const char**)&srcStr, NULL, &errNum);
     if (program == NULL) {
-        checkErr(errNum);
+        checkErr(errNum, __LINE__);
         std::cerr << "Failed to create CL program from source." << std::endl;
         return NULL;
     }
@@ -225,7 +226,7 @@ void createKernel(string kernel_name){
 
     // create kernel and check for errors
     kernels[kernel_name] = clCreateKernel(program, kernel_name.c_str(), &err);
-    checkErr(err);
+    checkErr(err, __LINE__);
 }
 
 void initializeOpenCLParameters(){
@@ -233,17 +234,17 @@ void initializeOpenCLParameters(){
     cl_int err;
 
     // Get platform and then a GPU on that platform
-    checkErr(clGetPlatformIDs(1, &platform, NULL));
-    checkErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL));
+    checkErr(clGetPlatformIDs(1, &platform, NULL), __LINE__);
+    checkErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL), __LINE__);
 
     // create context
     context = clCreateContext(0, 1, &device, NULL, NULL, &err);
-    checkErr(err);
+    checkErr(err, __LINE__);
 
     // Create all of the command queues
     for (unsigned int i = 0; i < NUM_CMD_QUEUES; i++) {
         queues[i] = clCreateCommandQueue(context, device, 0, &err);
-        checkErr(err);
+        checkErr(err, __LINE__);
     }
 
     // Load source code for program
@@ -403,24 +404,24 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
     // copying over conv1 buffer
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_CONV1], conv1_device_, CL_FALSE, 0, conv1_len * sizeof(float),
-            (void*)conv1, 0, NULL, NULL));
+            (void*)conv1, 0, NULL, NULL), __LINE__);
 
     // setting arguments and calling transform_conv1 kernel
-    checkErr(clSetKernelArg(kernels["transform_conv1"], 0, sizeof(cl_mem), &conv1_device_));
-    checkErr(clSetKernelArg(kernels["transform_conv1"], 1, sizeof(cl_mem), &conv1_device));
-    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV1], kernels["transform_conv1"], 3, NULL, gws_conv1, lws_conv, 0, NULL, NULL));
+    checkErr(clSetKernelArg(kernels["transform_conv1"], 0, sizeof(cl_mem), &conv1_device_), __LINE__);
+    checkErr(clSetKernelArg(kernels["transform_conv1"], 1, sizeof(cl_mem), &conv1_device), __LINE__);
+    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV1], kernels["transform_conv1"], 3, NULL, gws_conv1, lws_conv, 0, NULL, NULL), __LINE__);
 
     /***** transform_conv2 *****/
     size_t gws_conv2[] = {CONV2_OUTPUT_CHANNELS*lws_conv[0],1*lws_conv[1],1*lws_conv[2]};
 
     // copying over conv2 buffer
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_CONV2], conv2_device_, CL_FALSE, 0, conv2_len * sizeof(float),
-            (void*)conv2, 0, NULL, NULL));
+            (void*)conv2, 0, NULL, NULL), __LINE__);
 
     // setting arguments and calling transform_conv2 kernel
-    checkErr(clSetKernelArg(kernels["transform_conv2"], 0, sizeof(cl_mem), &conv2_device_));
-    checkErr(clSetKernelArg(kernels["transform_conv2"], 1, sizeof(cl_mem), &conv2_device));
-    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV2], kernels["transform_conv2"], 3, NULL, gws_conv2, lws_conv, 0, NULL, NULL));
+    checkErr(clSetKernelArg(kernels["transform_conv2"], 0, sizeof(cl_mem), &conv2_device_), __LINE__);
+    checkErr(clSetKernelArg(kernels["transform_conv2"], 1, sizeof(cl_mem), &conv2_device), __LINE__);
+    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_CONV2], kernels["transform_conv2"], 3, NULL, gws_conv2, lws_conv, 0, NULL, NULL), __LINE__);
 
     /***** transform_fc1 *****/
     size_t lws_fc1[] = {d_dims[3], d_dims[2], d_dims[1]};
@@ -428,16 +429,16 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
     // copying over fc1 buffer
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_FC1], fc1_device_, CL_FALSE, 0, fc1_len * sizeof(float),
-            (void*)fc1, 0, NULL, NULL));
+            (void*)fc1, 0, NULL, NULL), __LINE__);
 
     // setting arguments and calling transform_conv2 kernel
-    checkErr(clSetKernelArg(kernels["transform_fc1"], 0, sizeof(cl_mem), &fc1_device_));
-    checkErr(clSetKernelArg(kernels["transform_fc1"], 1, sizeof(cl_mem), &fc1_device));
-    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_FC1], kernels["transform_fc1"], 3, NULL, gws_fc1, lws_fc1, 0, NULL, NULL));
+    checkErr(clSetKernelArg(kernels["transform_fc1"], 0, sizeof(cl_mem), &fc1_device_), __LINE__);
+    checkErr(clSetKernelArg(kernels["transform_fc1"], 1, sizeof(cl_mem), &fc1_device), __LINE__);
+    checkErr(clEnqueueNDRangeKernel(queues[QUEUE_IDX_FC1], kernels["transform_fc1"], 3, NULL, gws_fc1, lws_fc1, 0, NULL, NULL), __LINE__);
 
     // Copy fc2 into device memory
     checkErr(clEnqueueWriteBuffer(queues[QUEUE_IDX_FC2], fc2_device, CL_FALSE, 0, fc2_len * sizeof(float),
-            (void*)fc2, 0, NULL, NULL));
+            (void*)fc2, 0, NULL, NULL), __LINE__);
 
     // q is the index for queues, reset to 0 for every kernel lunch such that all kernels will be streamlined
     // i.e. a new kernel that is using queue x will only use the data calculated by the previous kernel that is also using queue x
@@ -453,15 +454,15 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
         // copy over batch of memory to be worked on
         checkErr(clEnqueueWriteBuffer(queues[q], input_device, CL_FALSE, offset, wgGlobSize * INPUT_NUM_ELEMENTS * sizeof(float),
-                (void*)(input + offset), 0, NULL, NULL));
+                (void*)(input + offset), 0, NULL, NULL), __LINE__);
 
         // setting arguments and calling unroll1 kernel
         size_t lws_unroll1[] = {BLOCK_SIZE};
         size_t gws_unroll1[] = {wgGlobSize*lws_unroll1[0]};
-        checkErr(clSetKernelArg(kernels["unroll1"], 0, sizeof(cl_mem), &input_device));
-        checkErr(clSetKernelArg(kernels["unroll1"], 1, sizeof(cl_mem), &input_unroll_device));
-        checkErr(clSetKernelArg(kernels["unroll1"], 2, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll1"], 1, NULL, gws_unroll1, lws_unroll1, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["unroll1"], 0, sizeof(cl_mem), &input_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["unroll1"], 1, sizeof(cl_mem), &input_unroll_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["unroll1"], 2, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll1"], 1, NULL, gws_unroll1, lws_unroll1, 0, NULL, NULL), __LINE__);
 
         // increment queue index
         q = (q + 1) % NUM_CMD_QUEUES;
@@ -475,11 +476,11 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         size_t gws_mm1[] = {MATRIX_MUL1_BLOCKS_PER_NUM*lws_mm[0], min(batch_num, input_unroll_dims[0] - start)*lws_mm[1], 1*lws_mm[2]};
 
         // setting arguments and calling matrix_multiplication1 kernel
-        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 0, sizeof(cl_mem), &conv1_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 1, sizeof(cl_mem), &input_unroll_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 2, sizeof(cl_mem), &a_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 3, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication1"], 2, NULL, gws_mm1, lws_mm, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 0, sizeof(cl_mem), &conv1_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 1, sizeof(cl_mem), &input_unroll_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 2, sizeof(cl_mem), &a_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["matrix_multiplication1"], 3, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication1"], 2, NULL, gws_mm1, lws_mm, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -496,11 +497,11 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         size_t gws_avg1[] = {wgGlobSize*lws_avg1[0], 1*lws_avg1[1], 1*lws_avg1[2]};
 
         // setting arguments and calling average_pool1 kernel
-        checkErr(clSetKernelArg(kernels["average_pool1"], 0, sizeof(cl_mem), &a_device));
-        checkErr(clSetKernelArg(kernels["average_pool1"], 1, sizeof(cl_mem), &b_device));
-        checkErr(clSetKernelArg(kernels["average_pool1"], 2, sizeof(cl_uint), &start));
-        checkErr(clSetKernelArg(kernels["average_pool1"], 3, sizeof(cl_uint), &offsetFromStart));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["average_pool1"], 3, NULL, gws_avg1, lws_avg1, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["average_pool1"], 0, sizeof(cl_mem), &a_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["average_pool1"], 1, sizeof(cl_mem), &b_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["average_pool1"], 2, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clSetKernelArg(kernels["average_pool1"], 3, sizeof(cl_uint), &offsetFromStart), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["average_pool1"], 3, NULL, gws_avg1, lws_avg1, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -518,10 +519,10 @@ void forward_operation(const float *input, const float *conv1, const float *conv
                                 1*lws_unroll2[1], 1*lws_unroll2[2]};
 
         // setting arguments and calling unroll2 kernel
-        checkErr(clSetKernelArg(kernels["unroll2"], 0, sizeof(cl_mem), &b_device));
-        checkErr(clSetKernelArg(kernels["unroll2"], 1, sizeof(cl_mem), &b_unroll_device));
-        checkErr(clSetKernelArg(kernels["unroll2"], 2, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll2"], 3, NULL, gws_unroll2, lws_unroll2, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["unroll2"], 0, sizeof(cl_mem), &b_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["unroll2"], 1, sizeof(cl_mem), &b_unroll_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["unroll2"], 2, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["unroll2"], 3, NULL, gws_unroll2, lws_unroll2, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -536,11 +537,11 @@ void forward_operation(const float *input, const float *conv1, const float *conv
                             1*lws_mm[1], 1*lws_mm[2]};
 
         // setting arguments and calling matrix_multiplication2 kernel
-        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 0, sizeof(cl_mem), &conv2_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 1, sizeof(cl_mem), &b_unroll_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 2, sizeof(cl_mem), &c_device));
-        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 3, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication2"], 2, NULL, gws_mm2, lws_mm, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 0, sizeof(cl_mem), &conv2_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 1, sizeof(cl_mem), &b_unroll_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 2, sizeof(cl_mem), &c_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["matrix_multiplication2"], 3, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["matrix_multiplication2"], 2, NULL, gws_mm2, lws_mm, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -557,11 +558,11 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         size_t gws_avg2[] = {wgGlobSize*lws_avg2[0], 1*lws_avg2[1], 1*lws_avg2[2]};
 
         // setting arguments and calling average_pool2 kernel
-        checkErr(clSetKernelArg(kernels["average_pool2"], 0, sizeof(cl_mem), &c_device));
-        checkErr(clSetKernelArg(kernels["average_pool2"], 1, sizeof(cl_mem), &d_device));
-        checkErr(clSetKernelArg(kernels["average_pool2"], 2, sizeof(cl_uint), &start));
-        checkErr(clSetKernelArg(kernels["average_pool2"], 3, sizeof(cl_uint), &offsetFromStart));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["average_pool2"], 3, NULL, gws_avg2, lws_avg2, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["average_pool2"], 0, sizeof(cl_mem), &c_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["average_pool2"], 1, sizeof(cl_mem), &d_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["average_pool2"], 2, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clSetKernelArg(kernels["average_pool2"], 3, sizeof(cl_uint), &offsetFromStart), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["average_pool2"], 3, NULL, gws_avg2, lws_avg2, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -576,12 +577,12 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         size_t gws_ff1[] = {((static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)))*lws_ff1[0]), 1*lws_ff1[1], 1*lws_ff1[2]};
 
         // setting arguments and calling fully_forward1 kernel
-        checkErr(clSetKernelArg(kernels["fully_forward1"], 0, sizeof(cl_mem), &d_device));
-        checkErr(clSetKernelArg(kernels["fully_forward1"], 1, sizeof(cl_mem), &fc1_device));
-        checkErr(clSetKernelArg(kernels["fully_forward1"], 2, sizeof(cl_mem), &e_device));
-        checkErr(clSetKernelArg(kernels["fully_forward1"], 3, sizeof(cl_uint), &a_height));
-        checkErr(clSetKernelArg(kernels["fully_forward1"], 4, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["fully_forward1"], 2, NULL, gws_ff1, lws_ff1, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 0, sizeof(cl_mem), &d_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 1, sizeof(cl_mem), &fc1_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 2, sizeof(cl_mem), &e_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 3, sizeof(cl_uint), &a_height), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward1"], 4, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["fully_forward1"], 2, NULL, gws_ff1, lws_ff1, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -597,12 +598,12 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         size_t gws_ff2[] = {((static_cast<unsigned int>(ceil(a_height / (float)TILE_SIZE)))*lws_ff2[0]), 1*lws_ff2[1], 1*lws_ff2[2]};
 
         // setting arguments and calling fully_forward1 kernel
-        checkErr(clSetKernelArg(kernels["fully_forward2"], 0, sizeof(cl_mem), &e_device));
-        checkErr(clSetKernelArg(kernels["fully_forward2"], 1, sizeof(cl_mem), &fc2_device));
-        checkErr(clSetKernelArg(kernels["fully_forward2"], 2, sizeof(cl_mem), &f_device));
-        checkErr(clSetKernelArg(kernels["fully_forward2"], 3, sizeof(cl_uint), &a_height));
-        checkErr(clSetKernelArg(kernels["fully_forward2"], 4, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["fully_forward2"], 2, NULL, gws_ff2, lws_ff2, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["fully_forward2"], 0, sizeof(cl_mem), &e_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward2"], 1, sizeof(cl_mem), &fc2_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward2"], 2, sizeof(cl_mem), &f_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward2"], 3, sizeof(cl_uint), &a_height), __LINE__);
+        checkErr(clSetKernelArg(kernels["fully_forward2"], 4, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["fully_forward2"], 2, NULL, gws_ff2, lws_ff2, 0, NULL, NULL), __LINE__);
 
         q = (q + 1) % NUM_CMD_QUEUES;
     }
@@ -616,11 +617,11 @@ void forward_operation(const float *input, const float *conv1, const float *conv
         size_t gws_argmax[] = {static_cast<unsigned int>(ceil(todo_count / (float)BLOCK_SIZE))*lws_argmax[0]};
 
         // setting arguments and calling fully_forward1 kernel
-        checkErr(clSetKernelArg(kernels["arg_max"], 0, sizeof(cl_mem), &f_device));
-        checkErr(clSetKernelArg(kernels["arg_max"], 1, sizeof(cl_mem), &output_device));
-        checkErr(clSetKernelArg(kernels["arg_max"], 3, sizeof(cl_uint), &f_len));
-        checkErr(clSetKernelArg(kernels["arg_max"], 4, sizeof(cl_uint), &start));
-        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["arg_max"], 1, NULL, gws_argmax, lws_argmax, 0, NULL, NULL));
+        checkErr(clSetKernelArg(kernels["arg_max"], 0, sizeof(cl_mem), &f_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["arg_max"], 1, sizeof(cl_mem), &output_device), __LINE__);
+        checkErr(clSetKernelArg(kernels["arg_max"], 3, sizeof(cl_uint), &f_len), __LINE__);
+        checkErr(clSetKernelArg(kernels["arg_max"], 4, sizeof(cl_uint), &start), __LINE__);
+        checkErr(clEnqueueNDRangeKernel(queues[q], kernels["arg_max"], 1, NULL, gws_argmax, lws_argmax, 0, NULL, NULL), __LINE__);
 
         // copy final results back to host output buffer
         clEnqueueReadBuffer(queues[q], output_device, CL_FALSE, start, todo_count * sizeof(int),
@@ -631,7 +632,7 @@ void forward_operation(const float *input, const float *conv1, const float *conv
 
     // wait for all of the queues to finish
     for(int i = 0; i < NUM_CMD_QUEUES; i++)
-        checkErr(clFinish(queues[i]));
+        checkErr(clFinish(queues[i]), __LINE__);
 }
 
 
