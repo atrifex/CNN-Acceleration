@@ -48,7 +48,6 @@ static unsigned int f_len;
 static unsigned int output_len;
 
 // pointers to the device memory used in the forward operation
-cl_mem all_memory_device;
 cl_mem conv1_device_;
 cl_mem conv2_device_;
 cl_mem fc1_device_;
@@ -170,6 +169,28 @@ void cleanUp(){
 
     if (context != 0)
         clReleaseContext(context);
+
+    clReleaseMemObject(conv1_device_);
+    clReleaseMemObject(conv2_device_);
+    clReleaseMemObject(fc1_device_);
+
+    clReleaseMemObject(conv1_device);
+    clReleaseMemObject(conv2_device);
+    clReleaseMemObject(fc1_device);
+    clReleaseMemObject(fc2_device);
+
+    clReleaseMemObject(input_device);
+    clReleaseMemObject(input_unroll_device);
+
+    clReleaseMemObject(a_device);
+    clReleaseMemObject(b_device);
+    clReleaseMemObject(b_unroll_device);
+    clReleaseMemObject(c_device);
+    clReleaseMemObject(d_device);
+    clReleaseMemObject(e_device);
+    clReleaseMemObject(f_device);
+
+    clReleaseMemObject(output_device);
 }
 
 inline void checkErr(cl_int error, const int line){
