@@ -54,7 +54,7 @@ endif
 CXX := g++
 
 # Target
-TARGET := host
+TARGET := fpga_CNN
 TARGET_DIR := bin
 
 # Directories

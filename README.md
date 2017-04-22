@@ -45,10 +45,19 @@ If you need to use another library, you need have to modify the [`CMakeLists.txt
 
 Test your implementation with small batch size first to verify the correctness. You can parse the `data/test100.hdf5` into smaller chunks using your preferred language(e.g. python). 2, 10 and 100 queries are provides in `data/test2.hdf5`, `data/test10.hdf5` and `data/test100.hdf5` in the data folder. Maker sure the data file you feed in has the same batch size as the `batch_size` you specify in the command line.
 
+### CUDA Version
 ```{.sh}
-./cuda_cnn ../data/test10.hdf5 ../data/model.hdf5 10
+./cuda_CNN ../../data/test10.hdf5 ../../data/model.hdf5 10
+```
+### OpenCL Version
+```{.sh}
+./openCL_CNN ../../data/test10.hdf5 ../../data/model.hdf5 10
 ```
 
+### FPGA Version with OpenCL Standard
+```{.sh}
+./fpga_CNN ../../../data/test10.hdf5 ../../../data/model.hdf5 10
+```
 
 ## Reporting Issues
 

@@ -103,7 +103,7 @@ if (NOT "${HDF5_INCLUDE_DIR}" STREQUAL "")
     include_directories("${HDF5_INCLUDE_DIR}")
 endif (NOT "${HDF5_INCLUDE_DIR}" STREQUAL "")
 
-set(PROJECT_TARGET cuda_cnn)
+set(PROJECT_TARGET cuda_CNN)
 cuda_add_executable(${PROJECT_TARGET} ${SOURCES})
 target_link_libraries(${PROJECT_TARGET}
     ${HDF5_LIBRARIES}
