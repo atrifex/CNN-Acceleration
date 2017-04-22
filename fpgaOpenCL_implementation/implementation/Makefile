@@ -6,7 +6,7 @@
 # whom the Software is furnished to do so, subject to the following conditions:
 # The above copyright notice and this permission notice shall be included in all copies or
 # substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 # EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 # OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -15,18 +15,18 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-# 
+#
 # This agreement shall be governed in all respects by the laws of the State of California and
 # by the laws of the United States of America.
 # This is a GNU Makefile.
 
 # You must configure ALTERAOCLSDKROOT to point the root directory of the Intel(R) FPGA SDK for OpenCL(TM)
 # software installation.
-# See http://www.altera.com/literature/hb/opencl-sdk/aocl_getting_started.pdf 
+# See http://www.altera.com/literature/hb/opencl-sdk/aocl_getting_started.pdf
 # for more information on installing and configuring the Intel(R) FPGA SDK for OpenCL(TM).
 
 ifeq ($(VERBOSE),1)
-ECHO := 
+ECHO :=
 else
 ECHO := @
 endif
@@ -59,7 +59,7 @@ TARGET_DIR := bin
 
 # Directories
 INC_DIRS := ../common/inc
-LIB_DIRS := 
+LIB_DIRS := /host/src/hdf5/lib
 
 # Files
 INCS := $(wildcard )
@@ -79,7 +79,7 @@ $(TARGET_DIR)/$(TARGET) : Makefile $(SRCS) $(INCS) $(TARGET_DIR)
 
 $(TARGET_DIR) :
 	$(ECHO)mkdir $(TARGET_DIR)
-	
+
 # Standard make targets
 clean :
 	$(ECHO)rm -f $(TARGET_DIR)/$(TARGET)
