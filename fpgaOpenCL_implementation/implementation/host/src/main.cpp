@@ -290,7 +290,6 @@ void initializeOpenCLParameters(){
         exit(1);
     }
 
-{
     createKernel("transform_conv1");
     createKernel("transform_conv2");
     createKernel("transform_fc1");
@@ -303,27 +302,6 @@ void initializeOpenCLParameters(){
     createKernel("fully_forward1");
     createKernel("fully_forward2");
     createKernel("arg_max");
-}
-
-}
-
-bool init() {
-  // Create the program.
-  std::string binary_file = getBoardBinaryFile("hello_world", device);
-  printf("Using AOCX: %s\n", binary_file.c_str());
-  program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
-
-  // Build the program that was just created.
-  status = clBuildProgram(program, 0, NULL, "", NULL, NULL);
-  checkError(status, "Failed to build program");
-
-  // Create the kernel - name passed in here must match kernel name in the
-  // original CL file, that was compiled into an AOCX file using the AOC tool
-  const char *kernel_name = "hello_world";  // Kernel name, as defined in the CL file
-  kernel = clCreateKernel(program, kernel_name, &status);
-  checkError(status, "Failed to create kernel");
-
-  return true;
 }
 
 /*
