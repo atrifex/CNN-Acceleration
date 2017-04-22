@@ -285,7 +285,6 @@ void initializeOpenCLParameters(){
 
     // Create the program.
     std::string binary_file = getBoardBinaryFile("cnn", device);
-    std::cout << "Using AOCX: " << binary_file << std::endl;
     program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
 
     // Build the program that was just created.
