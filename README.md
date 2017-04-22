@@ -19,7 +19,7 @@ Aside from a C compiler and the CUDA 8 Toolkit, [CMake](https://cmake.org/) 3.1 
 
 To build the CUDA and OpenCL versions the [Hunter] package manager with Cmake needs to be used. Install the libraries needed (mainly `HDF5`).
 
-Assuming that you have checked out the project into `$PROJECT_DIR` do
+Assuming that you have checked out the project into `$PROJECT_DIR`, execute the following sequence of commands:
 
 ```{.sh}
 cd $PROJECT_DIR/cuda_implementation/
@@ -43,6 +43,31 @@ If you need to use another library, you need have to modify the [`CMakeLists.txt
 ### Building FPGA Version with OpenCL Standard
 Since the FPGA version needs to use modified versions of the OpenCL libraries provided by Intel, it makes more sense to just use the Makefile provided by Intel.
 
+The first step in building is figuring out which boards are available. The following command will list all of the available boards:
+```{.sh}
+aoc --list-boards
+```
+
+#### Compiling the OpenCL Kernel to Run on Board
+```{.sh}
+cd $PROJECT_DIR/fpgaOpenCL_implementation/
+aoc device/cnn.cl -o bin/cnn.aocx --board <board>
+```
+
+#### Compiling the OpenCL Kernel for Emulator
+```{.sh}
+cd $PROJECT_DIR/fpgaOpenCL_implementation/
+aoc -march=emulator device/cnn.cl -o bin/cnn.aocx --board <board>
+```
+
+#### Compiling the OpenCL Host Code
+Assuming that you have checked out the project into `$PROJECT_DIR`, execute the following sequence of commands:
+```{.sh}
+cd $PROJECT_DIR/fpgaOpenCL_implementation/
+make
+```
+
+This will generate a bin folder that will contain the executable that can run the FPGA version of the code.
 
 ## How to Run Code
 
