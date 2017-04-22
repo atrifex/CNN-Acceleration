@@ -27,7 +27,7 @@ using std::min;
 #include <stdlib.h>
 #include <math.h>
 #include <cstring>
-#include <hdf5.h>
+#include "hdf5/include/hdf5.h"
 
 #include "CL/opencl.h"
 #include "AOCLUtils/aocl_utils.h"

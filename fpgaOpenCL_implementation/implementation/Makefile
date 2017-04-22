@@ -47,7 +47,7 @@ AOCL_LINK_CONFIG := $(shell aocl link-config )
 ifeq ($(DEBUG),1)
 CXXFLAGS += -g
 else
-CXXFLAGS += -O2
+CXXFLAGS += -O2 -std=c++11
 endif
 
 # Compiler

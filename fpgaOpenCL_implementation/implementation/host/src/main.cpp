@@ -154,7 +154,7 @@ const char *getErrorString(cl_int error){
     }
 }
 
-void cleanUp(){
+void cleanup(){
     for(int i = 0; i < NUM_CMD_QUEUES; i++){
         if (queues[i] != 0)
             clReleaseCommandQueue(queues[i]);
@@ -198,7 +198,7 @@ inline void checkErr(cl_int error, const int line){
     if (error != CL_SUCCESS) {
         std::cerr << "ERROR: " <<  getErrorString(error)  << std::endl;
         std::cerr << "At line: " <<  line  << std::endl;
-        cleanUp();
+        cleanup();
         exit(EXIT_FAILURE);
     }
 }
@@ -255,14 +255,14 @@ void initializeOpenCLParameters(){
     cl_int err;
 
     if(!setCwdToExeDir()) {
-      return false;
+	exit(1);
     }
 
     // Get the OpenCL platform.
     platform = findPlatform("Intel(R) FPGA");
     if(platform == NULL) {
-      printf("ERROR: Unable to find Intel(R) FPGA OpenCL platform.\n");
-      return false;
+      std::cerr << "ERROR: FPGA platform not found." << std::endl;
+      exit(1);
     }
     // Query the available OpenCL devices.
     scoped_array<cl_device_id> devices;
@@ -285,7 +285,7 @@ void initializeOpenCLParameters(){
 
     // Load source code for program
     if ((program = createProgram(context, device, "cnn.cl")) == NULL) {
-        cleanUp();
+        cleanup();
         std::cerr << "Program creation failed." << std::endl;
         exit(1);
     }
@@ -785,7 +785,7 @@ int main(int argc, char **argv) {
         << static_cast<float>(num_correct) / FLAGS_batch_size << "\n";
 
     // Clean up and free all resources
-    cleanUp();
+    cleanup();
     free(all_memory_host);
 
     return 0;
