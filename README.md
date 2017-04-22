@@ -73,6 +73,8 @@ This will generate a bin folder that will contain the executable that can run th
 
 Test your implementation with small batch size first to verify the correctness. You can parse the `data/test100.hdf5` into smaller chunks using your preferred language(e.g. python). 2, 10 and 100 queries are provides in `data/test2.hdf5`, `data/test10.hdf5` and `data/test100.hdf5` in the data folder. Maker sure the data file you feed in has the same batch size as the `batch_size` you specify in the command line.
 
+To run the code, you need to be in the build or bin directories of a given version of the project.
+
 ### CUDA Version
 ```{.sh}
 ./cuda_CNN ../../data/test10.hdf5 ../../data/model.hdf5 10
@@ -82,9 +84,14 @@ Test your implementation with small batch size first to verify the correctness. 
 ./openCL_CNN ../../data/test10.hdf5 ../../data/model.hdf5 10
 ```
 
-### FPGA Version with OpenCL Standard
+### FPGA Version on Board
 ```{.sh}
 ./fpga_CNN ../../../data/test10.hdf5 ../../../data/model.hdf5 10
+```
+
+### FPGA Version with Emulator
+```{.sh}
+CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./fpga_CNN ../../../data/test10.hdf5 ../../../data/model.hdf5 10
 ```
 
 ## Reporting Issues
