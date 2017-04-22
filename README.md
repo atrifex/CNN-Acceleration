@@ -8,27 +8,24 @@ Provided is a model that has been trained using 60,000 examples (training set im
 
 The dataset and model are from the [MNIST database](http://yann.lecun.com/exdb/mnist/).
 
-## Local Development Environment
+## System Requirements And Building the Project
 
-The project requires a CUDA-supported operating system, C compiler, and the CUDA 8 Toolkit. The CUDA 8 Toolkit can be downloaded from the [CUDA Download](https://developer.nvidia.com/cuda-downloads) page. Instructions on how to install the CUDA Toolkit are available in the [Quick Start page](http://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html). Installation guides and the list of supported C compilers for [Windows](http://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html), [Linux](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html), and [OSX](http://docs.nvidia.com/cuda/cuda-installation-guide-mac-os-x/index.html) are also found in the [CUDA Toolkit Documentation Page](http://docs.nvidia.com/cuda/index.html).
+The project requires a C++ compiler, CUDA 8 Toolkit, and OpenCL 1.2 or higher. 
 
+The CUDA 8 Toolkit can be downloaded from the [CUDA Download](https://developer.nvidia.com/cuda-downloads) page. Instructions on how to install the CUDA Toolkit are available in the [Quick Start page](http://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html). Installation guides and the list of supported C compilers for [Windows](http://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html), [Linux](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html), and [OSX](http://docs.nvidia.com/cuda/cuda-installation-guide-mac-os-x/index.html) are also found in the [CUDA Toolkit Documentation Page](http://docs.nvidia.com/cuda/index.html).
 Aside from a C compiler and the CUDA 8 Toolkit, [CMake](https://cmake.org/) 3.1 or later is required to generate build scripts for your target IDE and compiler.
 
-### How to Build
+### Building CUDA and OpenCL versions
 
-To build the project the [Hunter] package manager with Cmake needs to be used. Install the libraries needed (mainly `HDF5`).
+To build the CUDA and OpenCL versions the [Hunter] package manager with Cmake needs to be used. Install the libraries needed (mainly `HDF5`).
 
-#### Using Hunter Package Manager
-
-By default, the compilation uses the [Hunter] --- a C package manager. This method requires that you have the CUDA toolkit installed on your machine.
-
-Assuming that you have checked out the project into `$SRCDIR` do
+Assuming that you have checked out the project into `$PROJECT_DIR` do
 
 ```{.sh}
-cd $SRCDIR
+cd $PROJECT_DIR/cuda_implementation/
 mkdir build
 cd build
-cmake $SRCDIR
+cmake ../
 ```
 
 This will download the required software needed for the project (see the [hunter docs][hunterdoc] for more information). You may see some warning while the system is compiling _HDF5_, which you can ignore. Once CMake has been run, a `Makefile` is generated so you can then perform `make` to build the project.
@@ -37,9 +34,15 @@ This will download the required software needed for the project (see the [hunter
 make
 ```
 
+The same sequence of commands need to be executed in the openCL_implementation directory to run the OpenCL version.
+
 If you do not plan on using `make`, examine the `cmake -G` option which allows you to generate XCode, Visual Studio, ... project configurations. You may also need to change the build type to enable/disable debugging and/or optimizations.
 
 If you need to use another library, you need have to modify the [`CMakeLists.txt`] and add the libraries to the `target_link_libraries` (and possibly the `include_directories`) section. Documentation on the CMake commands is found in the [documentation page][cmakedoc].
+
+### Building FPGA Version with OpenCL Standard
+Since the FPGA version needs to use modified versions of the OpenCL libraries provided by Intel, it makes more sense to just use the Makefile provided by Intel.
+
 
 ## How to Run Code
 
