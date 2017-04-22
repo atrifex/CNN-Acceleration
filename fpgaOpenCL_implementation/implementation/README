@@ -1,0 +1,4 @@
+
+aoc --board p385a_sch_ax115 device/hello_world.cl -o bin/hello_world.aocx -march=emulator
+make
+env CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./bin/host

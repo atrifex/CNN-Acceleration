@@ -1,5 +1,6 @@
 
 #include "cnn.h"
+using namespace aocl_utils;
 
 static unsigned int FLAGS_batch_size = 10000;
 static std::string FLAGS_testdata{};
@@ -289,6 +290,58 @@ void initializeOpenCLParameters(){
     createKernel("arg_max");
 }
 
+bool init() {
+  cl_int status;
+
+  if(!setCwdToExeDir()) {
+    return false;
+  }
+
+  // Get the OpenCL platform.
+  platform = findPlatform("Intel(R) FPGA");
+  if(platform == NULL) {
+    printf("ERROR: Unable to find Intel(R) FPGA OpenCL platform.\n");
+    return false;
+  }
+
+  // Query the available OpenCL devices.
+  scoped_array<cl_device_id> devices;
+  cl_uint num_devices;
+
+  devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
+
+  // We'll just use the first device.
+  device = devices[0];
+
+  // Display some device information.
+  display_device_info(device);
+
+  // Create the context.
+  context = clCreateContext(NULL, 1, &device, &oclContextCallback, NULL, &status);
+  checkError(status, "Failed to create context");
+
+  // Create the command queue.
+  queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &status);
+  checkError(status, "Failed to create command queue");
+
+  // Create the program.
+  std::string binary_file = getBoardBinaryFile("hello_world", device);
+  printf("Using AOCX: %s\n", binary_file.c_str());
+  program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
+
+  // Build the program that was just created.
+  status = clBuildProgram(program, 0, NULL, "", NULL, NULL);
+  checkError(status, "Failed to build program");
+
+  // Create the kernel - name passed in here must match kernel name in the
+  // original CL file, that was compiled into an AOCX file using the AOC tool
+  const char *kernel_name = "hello_world";  // Kernel name, as defined in the CL file
+  kernel = clCreateKernel(program, kernel_name, &status);
+  checkError(status, "Failed to create kernel");
+
+  return true;
+}
+
 /*
     load_data(float *x, float *y)
     DESCRIPTION:
@@ -340,7 +393,6 @@ static unsigned int load_data(float *x, float *y) {
     delete[] x_dims;
     return 0;
 }
-
 
 /*
     load_model(float *conv1, float *conv2, float * fc1, float *fc2)
@@ -402,8 +454,7 @@ static void get_ground_truth(const float *input, unsigned int *output) {
     }
 }
 
-
-/*  TODO
+/*
     forward_operation(const float *input, const float *conv1, const float *conv2, const float * fc1, const float *fc2, unsigned int *output)
     DESCRIPTION:
         Forward operation for the CNN, a combination of conv layer + average pooling + relu.
@@ -655,7 +706,6 @@ void forward_operation(const float *input, const float *conv1, const float *conv
     for(int i = 0; i < NUM_CMD_QUEUES; i++)
         checkErr(clFinish(queues[i]), __LINE__);
 }
-
 
 /*
     main(unsigned int argc, char **argv)

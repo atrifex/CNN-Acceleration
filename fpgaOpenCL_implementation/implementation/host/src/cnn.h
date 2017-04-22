@@ -22,14 +22,15 @@ using std::map;
 using std::vector;
 using std::min;
 
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <cstring>
 #include <hdf5.h>
 
-#ifdef __APPLE__
-    #include <OpenCL/cl.h>
-#else
-    #include <CL/cl.h>
-#endif
-
+#include "CL/opencl.h"
+#include "AOCLUtils/aocl_utils.h"
 #include "range.hpp"
 #include "utils.hpp"
 
