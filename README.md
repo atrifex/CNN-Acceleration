@@ -94,6 +94,30 @@ To run the code, you need to be in the build or bin directories of a given versi
 CL_CONTEXT_EMULATOR_DEVICE_ALTERA=1 ./fpga_CNN ../../../data/test10.hdf5 ../../../data/model.hdf5 10
 ```
 
+## Results
+The following are the results on a Tesla P100 GPU as of 4/22/2017.
+
+### CUDA Version
+test10: 15.9631 milliseconds
+test100: 17.6193 milliseconds
+testfull: 524.852 milliseconds
+
+### OpenCL Version
+test10: 3.28717 milliseconds
+test100: 3.76949 milliseconds
+testfull: 34.1698 milliseconds
+
+### FPGA Version on Board
+Need to get access to system with an FPGA board to test this version of the code.
+
+### FPGA Version with Emulator
+test10: 7423.32 milliseconds
+test100: 68188.2 milliseconds
+testfull: TIMES OUT
+
+Note: Major optimizations need to be made before the results from the FPGA version can match the results from the OpenCL and CUDA versions of the code.
+
+
 ## Reporting Issues
 
 Please use the [GitHub issue manager] to report any issues or suggestions about the project.
