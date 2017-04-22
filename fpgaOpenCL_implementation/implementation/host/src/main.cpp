@@ -283,12 +283,14 @@ void initializeOpenCLParameters(){
         checkErr(err, __LINE__);
     }
 
-    // Load source code for program
-    if ((program = createProgram(context, device, "cnn.cl")) == NULL) {
-        cleanup();
-        std::cerr << "Program creation failed." << std::endl;
-        exit(1);
-    }
+    // Create the program.
+    std::string binary_file = getBoardBinaryFile("cnn", device);
+    std::cout << "Using AOCX: " << binary_file << std::endl;
+    program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
+
+    // Build the program that was just created.
+    err = clBuildProgram(program, 0, NULL, "", NULL, NULL);
+    checkErr(err, __LINE__);
 
     createKernel("transform_conv1");
     createKernel("transform_conv2");
