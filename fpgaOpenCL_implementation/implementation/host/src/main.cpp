@@ -252,15 +252,29 @@ void createKernel(string kernel_name){
 }
 
 void initializeOpenCLParameters(){
-    // error code returned from api calls
     cl_int err;
 
-    // Get platform and then a GPU on that platform
-    checkErr(clGetPlatformIDs(1, &platform, NULL), __LINE__);
-    checkErr(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL), __LINE__);
+    if(!setCwdToExeDir()) {
+      return false;
+    }
 
-    // create context
-    context = clCreateContext(0, 1, &device, NULL, NULL, &err);
+    // Get the OpenCL platform.
+    platform = findPlatform("Intel(R) FPGA");
+    if(platform == NULL) {
+      printf("ERROR: Unable to find Intel(R) FPGA OpenCL platform.\n");
+      return false;
+    }
+    // Query the available OpenCL devices.
+    scoped_array<cl_device_id> devices;
+    cl_uint num_devices;
+
+    devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
+
+    // We'll just use the first device.
+    device = devices[0];
+
+    // Create the context.
+    context = clCreateContext(NULL, 1, &device, &oclContextCallback, NULL, &err);
     checkErr(err, __LINE__);
 
     // Create all of the command queues
@@ -276,6 +290,7 @@ void initializeOpenCLParameters(){
         exit(1);
     }
 
+{
     createKernel("transform_conv1");
     createKernel("transform_conv2");
     createKernel("transform_fc1");
@@ -290,40 +305,9 @@ void initializeOpenCLParameters(){
     createKernel("arg_max");
 }
 
+}
+
 bool init() {
-  cl_int status;
-
-  if(!setCwdToExeDir()) {
-    return false;
-  }
-
-  // Get the OpenCL platform.
-  platform = findPlatform("Intel(R) FPGA");
-  if(platform == NULL) {
-    printf("ERROR: Unable to find Intel(R) FPGA OpenCL platform.\n");
-    return false;
-  }
-
-  // Query the available OpenCL devices.
-  scoped_array<cl_device_id> devices;
-  cl_uint num_devices;
-
-  devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
-
-  // We'll just use the first device.
-  device = devices[0];
-
-  // Display some device information.
-  display_device_info(device);
-
-  // Create the context.
-  context = clCreateContext(NULL, 1, &device, &oclContextCallback, NULL, &status);
-  checkError(status, "Failed to create context");
-
-  // Create the command queue.
-  queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &status);
-  checkError(status, "Failed to create command queue");
-
   // Create the program.
   std::string binary_file = getBoardBinaryFile("hello_world", device);
   printf("Using AOCX: %s\n", binary_file.c_str());
