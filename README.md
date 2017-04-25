@@ -1,6 +1,6 @@
 # Code Acceleration
 
-The goal of this project is two fold. First, accelerate the forward propagation step of the Convolutional Neural Network (CNN) algorithm using using CUDA and OpenCL. Second, evaluate its performance on NVIDIA, AMD GPUs, and an FPGA platform.
+The goal of this project is two fold. First, accelerate the forward propagation step of the Convolutional Neural Network (CNN) algorithm using CUDA and OpenCL. Second, evaluate its performance on NVIDIA, AMD GPUs, and an FPGA platform.
 
 ## CNN and MNIST
 
